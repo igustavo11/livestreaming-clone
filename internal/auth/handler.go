@@ -41,7 +41,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/signup", h.signup)
 	r.Post("/login", h.login)
 	r.Post("/logout", h.logout)
-	r.With(h.requireAuth).Get("/me", h.me)
+	r.With(h.RequireAuth).Get("/me", h.me)
 	r.Get("/google", h.googleRedirect)
 	r.Get("/google/callback", h.googleCallback)
 	r.Post("/google/onboarding", h.googleOnboarding)
@@ -214,7 +214,8 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, buildAuthResponse(sessionUser.ID, sessionUser.Email, sessionUser.Username, channel.ID, channel.Title, channel.Category, channel.IsLive))
 }
 
-func (h *Handler) requireAuth(next http.Handler) http.Handler {
+// RequireAuth is middleware that loads the session user into the request context.
+func (h *Handler) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := r.Cookie(SessionCookieName)
 		if err != nil || c.Value == "" {

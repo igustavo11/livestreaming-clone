@@ -17,6 +17,7 @@ import (
 	"github.com/igustavo11/livestreaming-clone/internal/config"
 	"github.com/igustavo11/livestreaming-clone/internal/db"
 	"github.com/igustavo11/livestreaming-clone/internal/dbmigrate"
+	"github.com/igustavo11/livestreaming-clone/internal/storage"
 )
 
 func main() {
@@ -60,9 +61,28 @@ func main() {
 		logger.Info("google oauth enabled")
 	}
 
+	var objectStore storage.ObjectStorage
+	r2, err := storage.NewR2(storage.R2Config{
+		AccountID:       cfg.R2AccountID,
+		AccessKeyID:     cfg.R2AccessKeyID,
+		SecretAccessKey: cfg.R2SecretAccessKey,
+		Bucket:          cfg.R2Bucket,
+		PublicBaseURL:   cfg.R2PublicBaseURL,
+	})
+	if err != nil {
+		logger.Error("failed to configure r2 storage", "error", err)
+		os.Exit(1)
+	}
+	if r2 != nil {
+		objectStore = r2
+		logger.Info("r2 object storage enabled")
+	} else {
+		logger.Info("r2 object storage disabled; thumbnail upload returns 503")
+	}
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           app.NewRouter(pool, db.New(pool), google, cfg.AuthSecret),
+		Handler:           app.NewRouter(pool, db.New(pool), google, cfg.AuthSecret, objectStore),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

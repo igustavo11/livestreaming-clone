@@ -143,9 +143,9 @@ Public (home/watch)
   GET    /api/channels/{username}      metadata + live status + viewer count
 
 Dashboard (authenticated)
-  GET    /api/me/channel               key preview + metadata
-  PUT    /api/me/channel               title, category
-  POST   /api/me/channel/thumbnail     thumbnail upload (multipart → R2)
+  GET    /api/me/channel               key preview + metadata (title, category, thumbnail_url, is_live)
+  PUT    /api/me/channel               title, category (fixed slugs: gaming, just_chatting, music, irl, esports, art, education, tech, cooking, other)
+  POST   /api/me/channel/thumbnail     multipart field "thumbnail" (jpeg/png/webp, max 2MB → R2)
   POST   /api/me/channel/stream-key    rotation (invalidates previous)
 
 Real-time

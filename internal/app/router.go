@@ -8,10 +8,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/igustavo11/livestreaming-clone/internal/auth"
+	"github.com/igustavo11/livestreaming-clone/internal/channel"
 	"github.com/igustavo11/livestreaming-clone/internal/db"
+	"github.com/igustavo11/livestreaming-clone/internal/storage"
 )
 
-func NewRouter(pool *pgxpool.Pool, queries *db.Queries, google auth.GoogleAuth, pendingSecret string) http.Handler {
+func NewRouter(pool *pgxpool.Pool, queries *db.Queries, google auth.GoogleAuth, pendingSecret string, store storage.ObjectStorage) http.Handler {
 	r := chi.NewRouter()
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -28,7 +30,14 @@ func NewRouter(pool *pgxpool.Pool, queries *db.Queries, google auth.GoogleAuth, 
 		_ = json.NewEncoder(w).Encode(status)
 	})
 
-	r.Mount("/api/auth", auth.NewHandler(pool, queries, false, google, pendingSecret).Routes())
+	authHandler := auth.NewHandler(pool, queries, false, google, pendingSecret)
+	r.Mount("/api/auth", authHandler.Routes())
+
+	channelHandler := channel.NewHandler(queries, store)
+	r.Route("/api/me/channel", func(r chi.Router) {
+		r.Use(authHandler.RequireAuth)
+		r.Mount("/", channelHandler.Routes())
+	})
 
 	return r
 }
