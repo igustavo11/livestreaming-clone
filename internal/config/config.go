@@ -19,6 +19,8 @@ type Config struct {
 	R2PublicBaseURL    string
 	ResendAPIKey       string
 	ResendFrom         string
+	InternalSecret     string
+	MediaMTXURL        string
 }
 
 func Load() (Config, error) {
@@ -36,6 +38,8 @@ func Load() (Config, error) {
 		R2PublicBaseURL:    os.Getenv("R2_PUBLIC_BASE_URL"),
 		ResendAPIKey:       os.Getenv("RESEND_API_KEY"),
 		ResendFrom:         getEnv("RESEND_FROM", "noreply@localhost"),
+		InternalSecret:     os.Getenv("INTERNAL_SECRET"),
+		MediaMTXURL:        getEnv("MEDIAMTX_URL", "http://mediamtx:9997"),
 	}
 
 	if cfg.DatabaseURL == "" {

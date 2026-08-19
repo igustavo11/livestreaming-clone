@@ -11,10 +11,11 @@ import (
 	"github.com/igustavo11/livestreaming-clone/internal/channel"
 	"github.com/igustavo11/livestreaming-clone/internal/db"
 	"github.com/igustavo11/livestreaming-clone/internal/email"
+	"github.com/igustavo11/livestreaming-clone/internal/ingest"
 	"github.com/igustavo11/livestreaming-clone/internal/storage"
 )
 
-func NewRouter(pool *pgxpool.Pool, queries *db.Queries, google auth.GoogleAuth, pendingSecret string, store storage.ObjectStorage, mailer email.Sender, publicBaseURL string) http.Handler {
+func NewRouter(pool *pgxpool.Pool, queries *db.Queries, google auth.GoogleAuth, pendingSecret string, store storage.ObjectStorage, mailer email.Sender, publicBaseURL string, internalSecret string, mediamtxURL string) http.Handler {
 	r := chi.NewRouter()
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -38,6 +39,12 @@ func NewRouter(pool *pgxpool.Pool, queries *db.Queries, google auth.GoogleAuth, 
 	r.Route("/api/me/channel", func(r chi.Router) {
 		r.Use(authHandler.RequireAuth)
 		r.Mount("/", channelHandler.Routes())
+	})
+
+	ingestHandler := ingest.NewHandler(queries, internalSecret, mediamtxURL)
+	r.Route("/internal/mediamtx", func(r chi.Router) {
+		r.Post("/auth", ingestHandler.Auth)
+		r.Post("/hook", ingestHandler.Hook)
 	})
 
 	return r

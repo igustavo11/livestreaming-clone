@@ -7,6 +7,10 @@
 		reverse_proxy server:8080
 	}
 
+	handle /internal/* {
+		reverse_proxy server:8080
+	}
+
 	handle /ws/* {
 		reverse_proxy server:8080
 	}
