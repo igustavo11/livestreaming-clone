@@ -3,3 +3,33 @@
 //   sqlc v1.31.1
 
 package db
+
+import (
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type Channel struct {
+	ID            pgtype.UUID
+	UserID        pgtype.UUID
+	Title         string
+	Category      string
+	ThumbnailUrl  string
+	StreamKeyHash pgtype.Text
+	IsLive        bool
+	CreatedAt     pgtype.Timestamptz
+}
+
+type Session struct {
+	TokenHash string
+	UserID    pgtype.UUID
+	ExpiresAt pgtype.Timestamptz
+	CreatedAt pgtype.Timestamptz
+}
+
+type User struct {
+	ID           pgtype.UUID
+	Email        string
+	Username     string
+	PasswordHash string
+	CreatedAt    pgtype.Timestamptz
+}

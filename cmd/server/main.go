@@ -7,19 +7,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
-	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
-	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/igustavo11/livestreaming-clone/internal/app"
 	"github.com/igustavo11/livestreaming-clone/internal/config"
 	"github.com/igustavo11/livestreaming-clone/internal/db"
-	"github.com/igustavo11/livestreaming-clone/migrations"
+	"github.com/igustavo11/livestreaming-clone/internal/dbmigrate"
 )
 
 func main() {
@@ -32,7 +28,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := runMigrations(cfg.DatabaseURL); err != nil {
+	if err := dbmigrate.Up(cfg.DatabaseURL); err != nil {
 		logger.Error("failed to run migrations", "error", err)
 		os.Exit(1)
 	}
@@ -55,7 +51,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           app.NewRouter(db.New(pool)),
+		Handler:           app.NewRouter(pool, db.New(pool)),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -75,24 +71,4 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("graceful shutdown failed", "error", err)
 	}
-}
-
-func runMigrations(databaseURL string) error {
-	src, err := iofs.New(migrations.FS, ".")
-	if err != nil {
-		return err
-	}
-
-	migrateURL := strings.Replace(databaseURL, "postgres://", "pgx5://", 1)
-
-	m, err := migrate.NewWithSourceInstance("iofs", src, migrateURL)
-	if err != nil {
-		return err
-	}
-	defer m.Close()
-
-	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		return err
-	}
-	return nil
 }
