@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/mail"
 	"strings"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/igustavo11/livestreaming-clone/internal/db"
 	"github.com/igustavo11/livestreaming-clone/internal/email"
+	"github.com/igustavo11/livestreaming-clone/internal/httputil"
 )
 
 type Handler struct {
@@ -81,36 +83,37 @@ type credentialsRequest struct {
 }
 
 func (h *Handler) signup(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req credentialsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeJSON(r, &req); err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	if _, err := mail.ParseAddress(req.Email); err != nil {
-		writeError(w, http.StatusUnprocessableEntity, "invalid email")
+		httputil.WriteError(w, http.StatusUnprocessableEntity, "invalid email")
 		return
 	}
 	if err := ValidateUsername(req.Username); err != nil {
-		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		httputil.WriteError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 	if len(req.Password) < MinPasswordLen {
-		writeError(w, http.StatusUnprocessableEntity, "password must be at least 8 characters")
+		httputil.WriteError(w, http.StatusUnprocessableEntity, "password must be at least 8 characters")
 		return
 	}
 
 	hash, err := HashPassword(req.Password)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	ctx := r.Context()
 	tx, err := h.pool.Begin(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	defer tx.Rollback(ctx)
@@ -124,67 +127,73 @@ func (h *Handler) signup(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if isUniqueViolation(err) {
-			writeError(w, http.StatusConflict, "email or username already taken")
+			httputil.WriteError(w, http.StatusConflict, "email or username already taken")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	channel, err := qtx.CreateChannelForUser(ctx, user.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	cookie, err := h.createSession(ctx, user.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	http.SetCookie(w, cookie)
 
-	writeJSON(w, http.StatusCreated, buildAuthResponse(uuidString(user.ID), user.Email, user.Username, channel.ID, channel.Title, channel.Category, channel.IsLive))
+	httputil.WriteJSON(w, http.StatusCreated, buildAuthResponse(httputil.UUIDString(user.ID), user.Email, user.Username, channel.ID, channel.Title, channel.Category, channel.IsLive))
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req credentialsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeJSON(r, &req); err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	ctx := r.Context()
 	user, err := h.queries.GetUserByEmail(ctx, strings.ToLower(strings.TrimSpace(req.Email)))
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "invalid credentials")
+		httputil.WriteError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 
 	if !user.PasswordHash.Valid || !VerifyPassword(user.PasswordHash.String, req.Password) {
-		writeError(w, http.StatusUnauthorized, "invalid credentials")
+		httputil.WriteError(w, http.StatusUnauthorized, "invalid credentials")
 		return
+	}
+
+	// Invalidate all existing sessions before creating a new one
+	if err := h.queries.DeleteUserSessions(ctx, user.ID); err != nil {
+		slog.ErrorContext(ctx, "failed to invalidate old sessions", "error", err)
 	}
 
 	channel, err := h.queries.GetChannelByUserID(ctx, user.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	cookie, err := h.createSession(ctx, user.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	http.SetCookie(w, cookie)
 
-	writeJSON(w, http.StatusOK, buildAuthResponse(uuidString(user.ID), user.Email, user.Username, channel.ID, channel.Title, channel.Category, channel.IsLive))
+	httputil.WriteJSON(w, http.StatusOK, buildAuthResponse(httputil.UUIDString(user.ID), user.Email, user.Username, channel.ID, channel.Title, channel.Category, channel.IsLive))
 }
 
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
@@ -202,23 +211,23 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 		Secure:   h.cookieSecure,
 	})
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_out"})
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "logged_out"})
 }
 
 func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	sessionUser, ok := UserFromContext(r.Context())
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "authentication required")
+		httputil.WriteError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
 
-	channel, err := h.queries.GetChannelByUserID(r.Context(), parseUUID(sessionUser.ID))
+	channel, err := h.queries.GetChannelByUserID(r.Context(), httputil.ParseUUID(sessionUser.ID))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, buildAuthResponse(sessionUser.ID, sessionUser.Email, sessionUser.Username, channel.ID, channel.Title, channel.Category, channel.IsLive))
+	httputil.WriteJSON(w, http.StatusOK, buildAuthResponse(sessionUser.ID, sessionUser.Email, sessionUser.Username, channel.ID, channel.Title, channel.Category, channel.IsLive))
 }
 
 // RequireAuth is middleware that loads the session user into the request context.
@@ -226,18 +235,23 @@ func (h *Handler) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := r.Cookie(SessionCookieName)
 		if err != nil || c.Value == "" {
-			writeError(w, http.StatusUnauthorized, "authentication required")
+			httputil.WriteError(w, http.StatusUnauthorized, "authentication required")
 			return
 		}
 
-		su, err := h.queries.GetSessionUser(r.Context(), HashSessionToken(c.Value))
+		tokenHash := HashSessionToken(c.Value)
+		su, err := h.queries.GetSessionUser(r.Context(), tokenHash)
 		if err != nil || !su.ExpiresAt.Valid || !su.ExpiresAt.Time.After(time.Now()) {
-			writeError(w, http.StatusUnauthorized, "authentication required")
+			// Clean up expired/invalid session
+			if err == nil {
+				_ = h.queries.DeleteSession(r.Context(), tokenHash)
+			}
+			httputil.WriteError(w, http.StatusUnauthorized, "authentication required")
 			return
 		}
 
 		ctx := ContextWithUser(r.Context(), &SessionUser{
-			ID:       uuidString(su.ID),
+			ID:       httputil.UUIDString(su.ID),
 			Email:    su.Email,
 			Username: su.Username,
 		})
@@ -281,7 +295,7 @@ func buildAuthResponse(userID, email, username string, chID pgtype.UUID, title, 
 			Username: username,
 		},
 		Channel: channelJSON{
-			ID:       uuidString(chID),
+			ID:       httputil.UUIDString(chID),
 			Username: username,
 			Title:    title,
 			Category: category,
@@ -293,34 +307,6 @@ func buildAuthResponse(userID, email, username string, chID pgtype.UUID, title, 
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation
-}
-
-func uuidString(u pgtype.UUID) string {
-	if !u.Valid {
-		return ""
-	}
-	v, err := u.Value()
-	if err != nil {
-		return ""
-	}
-	s, _ := v.(string)
-	return s
-}
-
-func parseUUID(s string) pgtype.UUID {
-	var u pgtype.UUID
-	_ = u.Scan(s)
-	return u
-}
-
-func writeJSON(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func writeError(w http.ResponseWriter, code int, message string) {
-	writeJSON(w, code, map[string]string{"error": message})
 }
 
 func decodeJSON(r *http.Request, v any) error {

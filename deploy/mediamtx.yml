@@ -1,7 +1,7 @@
 ###############################################
 # MediaMTX configuration
 # Ingest-only: RTMP in, nothing served publicly.
-# Auth and hooks are wired in ticket #7.
+# Auth and hooks wired to our Go server.
 ###############################################
 
 logLevel: info
@@ -13,6 +13,19 @@ hls: no
 webrtc: no
 srt: no
 moq: no
+
+# External HTTP authentication
+authMethod: http
+authHTTPAddress: http://server:8080/internal/mediamtx/auth
+authHTTPExclude:
+  - action: api
+  - action: metrics
+  - action: pprof
+
+pathDefaults:
+  # Hooks for stream lifecycle events
+  runOnAvailable: curl -s -X POST http://server:8080/internal/mediamtx/hook -H "Content-Type: application/json" -H "X-Internal-Secret: $INTERNAL_SECRET" -d '{"event":"stream-available","path":"$MTX_PATH"}'
+  runOnUnavailable: curl -s -X POST http://server:8080/internal/mediamtx/hook -H "Content-Type: application/json" -H "X-Internal-Secret: $INTERNAL_SECRET" -d '{"event":"stream-unavailable","path":"$MTX_PATH"}'
 
 paths:
   all:

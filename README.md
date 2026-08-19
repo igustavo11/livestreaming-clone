@@ -152,9 +152,8 @@ Real-time
   WS     /ws/chat/{username}           send (auth) / receive (everyone)
 
 Internal (shared-secret header, never logged)
-  POST   /internal/ingest/auth         MediaMTX blocking auth (authMethod: http)
-  POST   /internal/ingest/available    runOnAvailable hook → channel live
-  POST   /internal/ingest/unavailable  runOnUnavailable hook → channel offline
+  POST   /internal/mediamtx/auth       MediaMTX blocking auth (authMethod: http)
+  POST   /internal/mediamtx/hook       stream-available / stream-unavailable hooks
 
 Ops
   GET    /metrics                      Prometheus metrics
@@ -165,14 +164,14 @@ Ops
 ```
 OBS → rtmp://host/live/{streamKey}
 
-MediaMTX ──POST──▶ /internal/ingest/auth       (authMethod: http, blocking)
+MediaMTX ──POST──▶ /internal/mediamtx/auth     (authMethod: http, blocking)
                    validates key hash + channel not already live → 2xx / 403
 
-runOnAvailable    ─▶ starts FFmpeg (→ HLS staging dir) + POST /internal/ingest/available   → channel live
-runOnUnavailable  ─▶ SIGINT to FFmpeg          + POST /internal/ingest/unavailable → channel offline
+runOnAvailable    ─▶ POST /internal/mediamtx/hook {"event":"stream-available"}  → channel live
+runOnUnavailable  ─▶ POST /internal/mediamtx/hook {"event":"stream-unavailable"} → channel offline
 
-Reconciler: polls MediaMTX /v3/paths/list every 10s as a safety net
-All /internal/* endpoints protected by a shared secret
+Reconciler: polls MediaMTX /v3/paths/list every 30s as a safety net
+All /internal/* endpoints protected by INTERNAL_SECRET header
 ```
 
 ## Out of scope for the MVP

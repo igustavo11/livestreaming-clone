@@ -44,7 +44,7 @@ func cleanTables(t *testing.T) {
 }
 
 func newRouter() http.Handler {
-	return app.NewRouter(testPool, testQueries, nil, testPendingSecret, nil, nil, "http://localhost")
+	return app.NewRouter(testPool, testQueries, nil, testPendingSecret, nil, nil, "http://localhost", "", "", false)
 }
 
 func doJSON(t *testing.T, handler http.Handler, method, path string, body any, cookies ...*http.Cookie) *httptest.ResponseRecorder {

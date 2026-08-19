@@ -46,6 +46,8 @@ services:
       R2_PUBLIC_BASE_URL: ${R2_PUBLIC_BASE_URL:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM: ${RESEND_FROM:-noreply@localhost}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-internal-secret}
+      MEDIAMTX_URL: http://mediamtx:9997
     depends_on:
       postgres:
         condition: service_healthy

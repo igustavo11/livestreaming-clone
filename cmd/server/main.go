@@ -18,6 +18,7 @@ import (
 	"github.com/igustavo11/livestreaming-clone/internal/db"
 	"github.com/igustavo11/livestreaming-clone/internal/dbmigrate"
 	"github.com/igustavo11/livestreaming-clone/internal/email"
+	"github.com/igustavo11/livestreaming-clone/internal/ingest"
 	"github.com/igustavo11/livestreaming-clone/internal/storage"
 )
 
@@ -91,7 +92,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           app.NewRouter(pool, db.New(pool), google, cfg.AuthSecret, objectStore, mailer, cfg.PublicBaseURL),
+		Handler:           app.NewRouter(pool, db.New(pool), google, cfg.AuthSecret, objectStore, mailer, cfg.PublicBaseURL, cfg.InternalSecret, cfg.MediaMTXURL, cfg.CookieSecure),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -102,6 +103,12 @@ func main() {
 			os.Exit(1)
 		}
 	}()
+
+	// Start reconciler if MediaMTX is configured
+	if cfg.InternalSecret != "" && cfg.MediaMTXURL != "" {
+		reconciler := ingest.NewReconciler(db.New(pool), cfg.MediaMTXURL, cfg.InternalSecret, logger)
+		go reconciler.Start(ctx)
+	}
 
 	<-ctx.Done()
 	logger.Info("shutting down")

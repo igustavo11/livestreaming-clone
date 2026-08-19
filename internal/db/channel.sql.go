@@ -11,6 +11,54 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getAllLiveChannels = `-- name: GetAllLiveChannels :many
+SELECT id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at
+FROM channels
+WHERE is_live = true
+`
+
+type GetAllLiveChannelsRow struct {
+	ID               pgtype.UUID
+	UserID           pgtype.UUID
+	Title            string
+	Category         string
+	ThumbnailUrl     string
+	StreamKeyHash    pgtype.Text
+	StreamKeyPreview string
+	IsLive           bool
+	CreatedAt        pgtype.Timestamptz
+}
+
+func (q *Queries) GetAllLiveChannels(ctx context.Context) ([]GetAllLiveChannelsRow, error) {
+	rows, err := q.db.Query(ctx, getAllLiveChannels)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAllLiveChannelsRow
+	for rows.Next() {
+		var i GetAllLiveChannelsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Title,
+			&i.Category,
+			&i.ThumbnailUrl,
+			&i.StreamKeyHash,
+			&i.StreamKeyPreview,
+			&i.IsLive,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getChannelByStreamKeyHash = `-- name: GetChannelByStreamKeyHash :one
 SELECT id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at
 FROM channels
@@ -92,6 +140,22 @@ func (q *Queries) GetChannelDashboardByUserID(ctx context.Context, userID pgtype
 		&i.Username,
 	)
 	return i, err
+}
+
+const setChannelLive = `-- name: SetChannelLive :exec
+UPDATE channels
+SET is_live = $2
+WHERE id = $1
+`
+
+type SetChannelLiveParams struct {
+	ID     pgtype.UUID
+	IsLive bool
+}
+
+func (q *Queries) SetChannelLive(ctx context.Context, arg SetChannelLiveParams) error {
+	_, err := q.db.Exec(ctx, setChannelLive, arg.ID, arg.IsLive)
+	return err
 }
 
 const updateChannelMetadata = `-- name: UpdateChannelMetadata :one

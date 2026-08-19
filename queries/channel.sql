@@ -36,3 +36,13 @@ RETURNING id, user_id, title, category, thumbnail_url, stream_key_hash, stream_k
 SELECT id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at
 FROM channels
 WHERE stream_key_hash = $1;
+
+-- name: SetChannelLive :exec
+UPDATE channels
+SET is_live = $2
+WHERE id = $1;
+
+-- name: GetAllLiveChannels :many
+SELECT id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at
+FROM channels
+WHERE is_live = true;
