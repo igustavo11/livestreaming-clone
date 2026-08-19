@@ -133,7 +133,8 @@ Auth
   POST   /api/auth/logout
   GET    /api/auth/me
   GET    /api/auth/google              redirect to Google
-  GET    /api/auth/google/callback     → username onboarding if new user
+  GET    /api/auth/google/callback     links/creates; new users get a pending cookie
+  POST   /api/auth/google/onboarding   new Google users pick their username
   POST   /api/auth/forgot-password     sends email via Resend
   POST   /api/auth/reset-password
 
@@ -142,9 +143,9 @@ Public (home/watch)
   GET    /api/channels/{username}      metadata + live status + viewer count
 
 Dashboard (authenticated)
-  GET    /api/me/channel               key preview + metadata
-  PUT    /api/me/channel               title, category
-  POST   /api/me/channel/thumbnail     thumbnail upload (multipart → R2)
+  GET    /api/me/channel               key preview + metadata (title, category, thumbnail_url, is_live)
+  PUT    /api/me/channel               title, category (fixed slugs: gaming, just_chatting, music, irl, esports, art, education, tech, cooking, other)
+  POST   /api/me/channel/thumbnail     multipart field "thumbnail" (jpeg/png/webp, max 2MB → R2)
   POST   /api/me/channel/stream-key    rotation (invalidates previous)
 
 Real-time
