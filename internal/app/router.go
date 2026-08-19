@@ -11,7 +11,7 @@ import (
 	"github.com/igustavo11/livestreaming-clone/internal/db"
 )
 
-func NewRouter(pool *pgxpool.Pool, queries *db.Queries) http.Handler {
+func NewRouter(pool *pgxpool.Pool, queries *db.Queries, google auth.GoogleAuth, pendingSecret string) http.Handler {
 	r := chi.NewRouter()
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -28,7 +28,7 @@ func NewRouter(pool *pgxpool.Pool, queries *db.Queries) http.Handler {
 		_ = json.NewEncoder(w).Encode(status)
 	})
 
-	r.Mount("/api/auth", auth.NewHandler(pool, queries, false).Routes())
+	r.Mount("/api/auth", auth.NewHandler(pool, queries, false, google, pendingSecret).Routes())
 
 	return r
 }

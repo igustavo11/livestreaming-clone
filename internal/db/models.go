@@ -19,6 +19,13 @@ type Channel struct {
 	CreatedAt     pgtype.Timestamptz
 }
 
+type Identity struct {
+	Provider  string
+	Subject   string
+	UserID    pgtype.UUID
+	CreatedAt pgtype.Timestamptz
+}
+
 type Session struct {
 	TokenHash string
 	UserID    pgtype.UUID
@@ -30,6 +37,6 @@ type User struct {
 	ID           pgtype.UUID
 	Email        string
 	Username     string
-	PasswordHash string
+	PasswordHash pgtype.Text
 	CreatedAt    pgtype.Timestamptz
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/igustavo11/livestreaming-clone/internal/app"
+	"github.com/igustavo11/livestreaming-clone/internal/auth"
 	"github.com/igustavo11/livestreaming-clone/internal/config"
 	"github.com/igustavo11/livestreaming-clone/internal/db"
 	"github.com/igustavo11/livestreaming-clone/internal/dbmigrate"
@@ -49,9 +50,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	var google auth.GoogleAuth
+	if cfg.GoogleEnabled() {
+		google = auth.NewGoogleOAuth(
+			cfg.GoogleClientID,
+			cfg.GoogleClientSecret,
+			cfg.PublicBaseURL+"/api/auth/google/callback",
+		)
+		logger.Info("google oauth enabled")
+	}
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           app.NewRouter(pool, db.New(pool)),
+		Handler:           app.NewRouter(pool, db.New(pool), google, cfg.AuthSecret),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

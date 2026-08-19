@@ -133,7 +133,8 @@ Auth
   POST   /api/auth/logout
   GET    /api/auth/me
   GET    /api/auth/google              redirect to Google
-  GET    /api/auth/google/callback     → username onboarding if new user
+  GET    /api/auth/google/callback     links/creates; new users get a pending cookie
+  POST   /api/auth/google/onboarding   new Google users pick their username
   POST   /api/auth/forgot-password     sends email via Resend
   POST   /api/auth/reset-password
 

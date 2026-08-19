@@ -67,7 +67,7 @@ RETURNING id, email, username, created_at
 type CreateUserParams struct {
 	Email        string
 	Username     string
-	PasswordHash string
+	PasswordHash pgtype.Text
 }
 
 type CreateUserRow struct {

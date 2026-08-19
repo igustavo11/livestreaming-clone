@@ -19,13 +19,21 @@ import (
 )
 
 type Handler struct {
-	pool         *pgxpool.Pool
-	queries      *db.Queries
-	cookieSecure bool
+	pool          *pgxpool.Pool
+	queries       *db.Queries
+	cookieSecure  bool
+	google        GoogleAuth
+	pendingSecret string
 }
 
-func NewHandler(pool *pgxpool.Pool, queries *db.Queries, cookieSecure bool) *Handler {
-	return &Handler{pool: pool, queries: queries, cookieSecure: cookieSecure}
+func NewHandler(pool *pgxpool.Pool, queries *db.Queries, cookieSecure bool, google GoogleAuth, pendingSecret string) *Handler {
+	return &Handler{
+		pool:          pool,
+		queries:       queries,
+		cookieSecure:  cookieSecure,
+		google:        google,
+		pendingSecret: pendingSecret,
+	}
 }
 
 func (h *Handler) Routes() chi.Router {
@@ -34,6 +42,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/login", h.login)
 	r.Post("/logout", h.logout)
 	r.With(h.requireAuth).Get("/me", h.me)
+	r.Get("/google", h.googleRedirect)
+	r.Get("/google/callback", h.googleCallback)
+	r.Post("/google/onboarding", h.googleOnboarding)
 	return r
 }
 
@@ -102,7 +113,7 @@ func (h *Handler) signup(w http.ResponseWriter, r *http.Request) {
 	user, err := qtx.CreateUser(ctx, db.CreateUserParams{
 		Email:        req.Email,
 		Username:     req.Username,
-		PasswordHash: hash,
+		PasswordHash: pgtype.Text{String: hash, Valid: true},
 	})
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -148,7 +159,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !VerifyPassword(user.PasswordHash, req.Password) {
+	if !user.PasswordHash.Valid || !VerifyPassword(user.PasswordHash.String, req.Password) {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
@@ -302,4 +313,8 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func writeError(w http.ResponseWriter, code int, message string) {
 	writeJSON(w, code, map[string]string{"error": message})
+}
+
+func decodeJSON(r *http.Request, v any) error {
+	return json.NewDecoder(r.Body).Decode(v)
 }
