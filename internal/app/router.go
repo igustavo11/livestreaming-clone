@@ -10,10 +10,11 @@ import (
 	"github.com/igustavo11/livestreaming-clone/internal/auth"
 	"github.com/igustavo11/livestreaming-clone/internal/channel"
 	"github.com/igustavo11/livestreaming-clone/internal/db"
+	"github.com/igustavo11/livestreaming-clone/internal/email"
 	"github.com/igustavo11/livestreaming-clone/internal/storage"
 )
 
-func NewRouter(pool *pgxpool.Pool, queries *db.Queries, google auth.GoogleAuth, pendingSecret string, store storage.ObjectStorage) http.Handler {
+func NewRouter(pool *pgxpool.Pool, queries *db.Queries, google auth.GoogleAuth, pendingSecret string, store storage.ObjectStorage, mailer email.Sender, publicBaseURL string) http.Handler {
 	r := chi.NewRouter()
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -30,7 +31,7 @@ func NewRouter(pool *pgxpool.Pool, queries *db.Queries, google auth.GoogleAuth, 
 		_ = json.NewEncoder(w).Encode(status)
 	})
 
-	authHandler := auth.NewHandler(pool, queries, false, google, pendingSecret)
+	authHandler := auth.NewHandler(pool, queries, false, google, pendingSecret, mailer, publicBaseURL)
 	r.Mount("/api/auth", authHandler.Routes())
 
 	channelHandler := channel.NewHandler(queries, store)

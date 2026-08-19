@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/igustavo11/livestreaming-clone/internal/db"
+	"github.com/igustavo11/livestreaming-clone/internal/email"
 )
 
 type Handler struct {
@@ -24,15 +25,19 @@ type Handler struct {
 	cookieSecure  bool
 	google        GoogleAuth
 	pendingSecret string
+	mailer        email.Sender
+	publicBaseURL string
 }
 
-func NewHandler(pool *pgxpool.Pool, queries *db.Queries, cookieSecure bool, google GoogleAuth, pendingSecret string) *Handler {
+func NewHandler(pool *pgxpool.Pool, queries *db.Queries, cookieSecure bool, google GoogleAuth, pendingSecret string, mailer email.Sender, publicBaseURL string) *Handler {
 	return &Handler{
 		pool:          pool,
 		queries:       queries,
 		cookieSecure:  cookieSecure,
 		google:        google,
 		pendingSecret: pendingSecret,
+		mailer:        mailer,
+		publicBaseURL: publicBaseURL,
 	}
 }
 
@@ -45,6 +50,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/google", h.googleRedirect)
 	r.Get("/google/callback", h.googleCallback)
 	r.Post("/google/onboarding", h.googleOnboarding)
+	r.Post("/forgot-password", h.forgotPassword)
+	r.Post("/reset-password", h.resetPassword)
 	return r
 }
 

@@ -17,6 +17,8 @@ type Config struct {
 	R2SecretAccessKey  string
 	R2Bucket           string
 	R2PublicBaseURL    string
+	ResendAPIKey       string
+	ResendFrom         string
 }
 
 func Load() (Config, error) {
@@ -32,6 +34,8 @@ func Load() (Config, error) {
 		R2SecretAccessKey:  os.Getenv("R2_SECRET_ACCESS_KEY"),
 		R2Bucket:           os.Getenv("R2_BUCKET"),
 		R2PublicBaseURL:    os.Getenv("R2_PUBLIC_BASE_URL"),
+		ResendAPIKey:       os.Getenv("RESEND_API_KEY"),
+		ResendFrom:         getEnv("RESEND_FROM", "noreply@localhost"),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -46,6 +50,10 @@ func Load() (Config, error) {
 
 func (c Config) GoogleEnabled() bool {
 	return c.GoogleClientID != "" && c.GoogleClientSecret != ""
+}
+
+func (c Config) ResendEnabled() bool {
+	return c.ResendAPIKey != ""
 }
 
 func getEnv(key, fallback string) string {

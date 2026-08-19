@@ -26,6 +26,14 @@ type Identity struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type PasswordResetToken struct {
+	TokenHash string
+	UserID    pgtype.UUID
+	ExpiresAt pgtype.Timestamptz
+	UsedAt    pgtype.Timestamptz
+	CreatedAt pgtype.Timestamptz
+}
+
 type Session struct {
 	TokenHash string
 	UserID    pgtype.UUID

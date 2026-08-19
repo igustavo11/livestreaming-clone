@@ -17,6 +17,7 @@ import (
 	"github.com/igustavo11/livestreaming-clone/internal/config"
 	"github.com/igustavo11/livestreaming-clone/internal/db"
 	"github.com/igustavo11/livestreaming-clone/internal/dbmigrate"
+	"github.com/igustavo11/livestreaming-clone/internal/email"
 	"github.com/igustavo11/livestreaming-clone/internal/storage"
 )
 
@@ -80,9 +81,17 @@ func main() {
 		logger.Info("r2 object storage disabled; thumbnail upload returns 503")
 	}
 
+	var mailer email.Sender
+	if cfg.ResendEnabled() {
+		mailer = email.NewResend(cfg.ResendAPIKey, cfg.ResendFrom)
+		logger.Info("resend email enabled")
+	} else {
+		logger.Info("resend email disabled; forgot-password returns 503")
+	}
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           app.NewRouter(pool, db.New(pool), google, cfg.AuthSecret, objectStore),
+		Handler:           app.NewRouter(pool, db.New(pool), google, cfg.AuthSecret, objectStore, mailer, cfg.PublicBaseURL),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

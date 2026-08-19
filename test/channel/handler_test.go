@@ -54,7 +54,7 @@ func newRouter(store storage.ObjectStorage) http.Handler {
 	if store == nil {
 		store = storage.NewMemory("https://cdn.test")
 	}
-	return app.NewRouter(testPool, testQueries, nil, testPendingSecret, store)
+	return app.NewRouter(testPool, testQueries, nil, testPendingSecret, store, nil, "http://localhost")
 }
 
 func doJSON(t *testing.T, handler http.Handler, method, path string, body any, cookies ...*http.Cookie) *httptest.ResponseRecorder {
@@ -313,7 +313,7 @@ func TestThumbnailRejectsOversizedFile(t *testing.T) {
 
 func TestThumbnailReturns503WhenStorageUnavailable(t *testing.T) {
 	cleanTables(t)
-	handler := app.NewRouter(testPool, testQueries, nil, testPendingSecret, nil)
+	handler := app.NewRouter(testPool, testQueries, nil, testPendingSecret, nil, nil, "http://localhost")
 	cookie := signup(t, handler, "streamer@example.com", "streamer")
 
 	rec := uploadThumbnail(t, handler, cookie, "a.png", "image/png", tinyPNG(t))
