@@ -1,0 +1,59 @@
+# Binaries / build output
+/bin/
+/dist/
+/server
+/uploader
+*.exe
+*.test
+*.out
+__debug_bin*
+
+# Go
+vendor/
+go.work
+go.work.sum
+
+# Next.js (web/)
+web/.next/
+web/out/
+web/node_modules/
+web/.vercel
+
+# Dependencies
+node_modules/
+
+# Env & secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Local runtime data (HLS staging, bind-mounted DB/cache)
+/data/
+
+# TLS certs / keys
+*.pem
+*.key
+*.crt
+
+# Caddy local state
+/caddy_data/
+/caddy_config/
+
+# Terraform (future infra)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+
+# Database dumps
+*.dump
+*.sql.gz
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
