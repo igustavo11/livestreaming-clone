@@ -32,7 +32,7 @@ func (f *fakeGoogle) Exchange(ctx context.Context, code string) (*auth.GoogleUse
 }
 
 func newOAuthRouter(g auth.GoogleAuth) http.Handler {
-	return app.NewRouter(testPool, testQueries, g, testPendingSecret, nil, nil, "http://localhost", "", "")
+	return app.NewRouter(testPool, testQueries, g, testPendingSecret, nil, nil, "http://localhost", "", "", false)
 }
 
 func googleInfo(email, subject string) *auth.GoogleUserInfo {

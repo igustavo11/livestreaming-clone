@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -69,12 +70,17 @@ func (r *Reconciler) reconcile(ctx context.Context) error {
 		return fmt.Errorf("fetch active paths: %w", err)
 	}
 
-	// Build set of active path names for O(1) lookup
-	activeSet := make(map[string]bool)
+	// Build set of hashed active stream keys for O(1) lookup
+	activeKeyHashes := make(map[string]bool)
 	for _, p := range activePaths {
-		if p.Available {
-			activeSet[p.Name] = true
+		if !p.Available {
+			continue
 		}
+		key := extractKeyFromPath(p.Name)
+		if key == "" {
+			continue
+		}
+		activeKeyHashes[streamkey.Hash(key)] = true
 	}
 
 	// Get all channels that are currently marked live
@@ -83,24 +89,9 @@ func (r *Reconciler) reconcile(ctx context.Context) error {
 		return fmt.Errorf("get live channels: %w", err)
 	}
 
-	// For each live channel, check if it has an active path
-	// We try to authenticate each active path against our system
+	// For each live channel, check if it has an active stream
 	for _, ch := range liveChannels {
-		// Check if any active path matches this channel
-		found := false
-		for pathName := range activeSet {
-			key := extractKeyFromPath(pathName)
-			if key == "" {
-				continue
-			}
-			hash := streamkey.Hash(key)
-			if ch.StreamKeyHash.String == hash {
-				found = true
-				break
-			}
-		}
-
-		if !found {
+		if !activeKeyHashes[ch.StreamKeyHash.String] {
 			// Channel is marked live but no active stream — mark offline
 			if err := r.queries.SetChannelLive(ctx, db.SetChannelLiveParams{
 				ID:     ch.ID,
@@ -133,8 +124,9 @@ func (r *Reconciler) fetchActivePaths(ctx context.Context) ([]pathResponse, erro
 		return nil, fmt.Errorf("mediamtx API returned %d", resp.StatusCode)
 	}
 
+	limitedBody := io.LimitReader(resp.Body, 10<<20)
 	var result pathsListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(limitedBody).Decode(&result); err != nil {
 		return nil, err
 	}
 

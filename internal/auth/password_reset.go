@@ -2,6 +2,7 @@ package auth
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/mail"
 	"strings"
@@ -12,28 +13,31 @@ import (
 
 	"github.com/igustavo11/livestreaming-clone/internal/db"
 	"github.com/igustavo11/livestreaming-clone/internal/email"
+	"github.com/igustavo11/livestreaming-clone/internal/httputil"
 )
 
 const PasswordResetTTL = time.Hour
 
 func (h *Handler) forgotPassword(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req struct {
 		Email string `json:"email"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		httputil.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	// Always the same response — no account enumeration.
 	const okMsg = "if that email is registered, a reset link has been sent"
 	respondOK := func() {
-		writeJSON(w, http.StatusOK, map[string]string{"status": okMsg})
+		httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": okMsg})
 	}
 
-	// Mailer missing is a global config issue — same status for every email.
+	// Mailer missing is a global config issue — still return the same response.
 	if h.mailer == nil {
-		writeError(w, http.StatusServiceUnavailable, "email delivery is not configured")
+		slog.ErrorContext(r.Context(), "forgot-password requested but email delivery not configured")
+		respondOK()
 		return
 	}
 
@@ -57,7 +61,7 @@ func (h *Handler) forgotPassword(w http.ResponseWriter, r *http.Request) {
 
 	token, err := GenerateSessionToken()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -67,7 +71,7 @@ func (h *Handler) forgotPassword(w http.ResponseWriter, r *http.Request) {
 		UserID:    user.ID,
 		ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -83,54 +87,57 @@ func (h *Handler) forgotPassword(w http.ResponseWriter, r *http.Request) {
 		Text:    fmt.Sprintf("Use this link to reset your password (expires in 1 hour):\n%s\n\ntoken=%s\n", resetURL, token),
 		HTML:    fmt.Sprintf(`<p>Use this link to reset your password (expires in 1 hour):</p><p><a href="%s">%s</a></p>`, resetURL, resetURL),
 	}
-	_ = h.mailer.Send(r.Context(), msg)
+	if err := h.mailer.Send(r.Context(), msg); err != nil {
+		slog.ErrorContext(r.Context(), "failed to send reset email", "error", err)
+	}
 
 	respondOK()
 }
 
 func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req struct {
 		Token    string `json:"token"`
 		Password string `json:"password"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		httputil.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	if len(req.Password) < MinPasswordLen {
-		writeError(w, http.StatusUnprocessableEntity, "password must be at least 8 characters")
+		httputil.WriteError(w, http.StatusUnprocessableEntity, "password must be at least 8 characters")
 		return
 	}
 	if strings.TrimSpace(req.Token) == "" {
-		writeError(w, http.StatusUnauthorized, "invalid or expired reset token")
+		httputil.WriteError(w, http.StatusUnauthorized, "invalid or expired reset token")
 		return
 	}
 
 	ctx := r.Context()
 	row, err := h.queries.GetPasswordResetToken(ctx, HashSessionToken(req.Token))
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "invalid or expired reset token")
+		httputil.WriteError(w, http.StatusUnauthorized, "invalid or expired reset token")
 		return
 	}
 	if row.UsedAt.Valid {
-		writeError(w, http.StatusUnauthorized, "invalid or expired reset token")
+		httputil.WriteError(w, http.StatusUnauthorized, "invalid or expired reset token")
 		return
 	}
 	if !row.ExpiresAt.Valid || !row.ExpiresAt.Time.After(time.Now()) {
-		writeError(w, http.StatusUnauthorized, "invalid or expired reset token")
+		httputil.WriteError(w, http.StatusUnauthorized, "invalid or expired reset token")
 		return
 	}
 
 	hash, err := HashPassword(req.Password)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	tx, err := h.pool.Begin(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	defer tx.Rollback(ctx)
@@ -139,7 +146,7 @@ func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request) {
 
 	// Mark used first (single-use); if already used concurrently, stop.
 	if err := qtx.MarkPasswordResetTokenUsed(ctx, row.TokenHash); err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -147,7 +154,7 @@ func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request) {
 	// Re-fetch to confirm.
 	check, err := qtx.GetPasswordResetToken(ctx, row.TokenHash)
 	if err != nil || !check.UsedAt.Valid {
-		writeError(w, http.StatusUnauthorized, "invalid or expired reset token")
+		httputil.WriteError(w, http.StatusUnauthorized, "invalid or expired reset token")
 		return
 	}
 
@@ -155,19 +162,19 @@ func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request) {
 		ID:           row.UserID,
 		PasswordHash: pgtype.Text{String: hash, Valid: true},
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	if err := qtx.DeleteUserSessions(ctx, row.UserID); err != nil && err != pgx.ErrNoRows {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "password_updated"})
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "password_updated"})
 }

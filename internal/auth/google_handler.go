@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/igustavo11/livestreaming-clone/internal/db"
+	"github.com/igustavo11/livestreaming-clone/internal/httputil"
 )
 
 const (
@@ -23,13 +24,13 @@ const (
 
 func (h *Handler) googleRedirect(w http.ResponseWriter, r *http.Request) {
 	if h.google == nil {
-		writeError(w, http.StatusServiceUnavailable, "google oauth not configured")
+		httputil.WriteError(w, http.StatusServiceUnavailable, "google oauth not configured")
 		return
 	}
 
 	state, err := randomHex(16)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -48,29 +49,29 @@ func (h *Handler) googleRedirect(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) googleCallback(w http.ResponseWriter, r *http.Request) {
 	if h.google == nil {
-		writeError(w, http.StatusServiceUnavailable, "google oauth not configured")
+		httputil.WriteError(w, http.StatusServiceUnavailable, "google oauth not configured")
 		return
 	}
 
 	stateCookie, err := r.Cookie(stateCookieName)
 	if err != nil || stateCookie.Value == "" || stateCookie.Value != r.URL.Query().Get("state") {
-		writeError(w, http.StatusForbidden, "invalid oauth state")
+		httputil.WriteError(w, http.StatusForbidden, "invalid oauth state")
 		return
 	}
 
 	info, err := h.google.Exchange(r.Context(), r.URL.Query().Get("code"))
 	if err != nil || info == nil {
-		writeError(w, http.StatusBadGateway, "google authentication failed")
+		httputil.WriteError(w, http.StatusBadGateway, "google authentication failed")
 		return
 	}
 	if !info.EmailVerified {
-		writeError(w, http.StatusForbidden, "google email is not verified")
+		httputil.WriteError(w, http.StatusForbidden, "google email is not verified")
 		return
 	}
 
 	email := strings.ToLower(strings.TrimSpace(info.Email))
 	if _, err := mail.ParseAddress(email); err != nil {
-		writeError(w, http.StatusUnprocessableEntity, "invalid email from provider")
+		httputil.WriteError(w, http.StatusUnprocessableEntity, "invalid email from provider")
 		return
 	}
 
@@ -82,7 +83,7 @@ func (h *Handler) googleCallback(w http.ResponseWriter, r *http.Request) {
 		h.finishLogin(w, r, identity.UserID)
 		return
 	} else if !errors.Is(err, pgx.ErrNoRows) {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -93,20 +94,20 @@ func (h *Handler) googleCallback(w http.ResponseWriter, r *http.Request) {
 			Subject:  info.Subject,
 			UserID:   user.ID,
 		}); err != nil {
-			writeError(w, http.StatusInternalServerError, "internal error")
+			httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
 		h.finishLogin(w, r, user.ID)
 		return
 	} else if !errors.Is(err, pgx.ErrNoRows) {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	// Brand-new Google user: needs a username.
 	token, err := SignPending(h.pendingSecret, info.Subject, email)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
@@ -126,32 +127,33 @@ func (h *Handler) googleCallback(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) googleOnboarding(w http.ResponseWriter, r *http.Request) {
 	pendingCookie, err := r.Cookie(PendingCookieName)
 	if err != nil || pendingCookie.Value == "" {
-		writeError(w, http.StatusUnauthorized, "pending google registration not found")
+		httputil.WriteError(w, http.StatusUnauthorized, "pending google registration not found")
 		return
 	}
 
 	pending, err := VerifyPending(h.pendingSecret, pendingCookie.Value)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "pending google registration invalid or expired")
+		httputil.WriteError(w, http.StatusUnauthorized, "pending google registration invalid or expired")
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req struct {
 		Username string `json:"username"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		httputil.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if err := ValidateUsername(req.Username); err != nil {
-		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		httputil.WriteError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 
 	ctx := r.Context()
 	tx, err := h.pool.Begin(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	defer tx.Rollback(ctx)
@@ -165,16 +167,16 @@ func (h *Handler) googleOnboarding(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if isUniqueViolation(err) {
-			writeError(w, http.StatusConflict, "username already taken")
+			httputil.WriteError(w, http.StatusConflict, "username already taken")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	channel, err := qtx.CreateChannelForUser(ctx, user.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -183,12 +185,12 @@ func (h *Handler) googleOnboarding(w http.ResponseWriter, r *http.Request) {
 		Subject:  pending.Subject,
 		UserID:   user.ID,
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -196,18 +198,18 @@ func (h *Handler) googleOnboarding(w http.ResponseWriter, r *http.Request) {
 
 	cookie, err := h.createSession(ctx, user.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	http.SetCookie(w, cookie)
 
-	writeJSON(w, http.StatusCreated, buildAuthResponse(uuidString(user.ID), user.Email, user.Username, channel.ID, channel.Title, channel.Category, channel.IsLive))
+	httputil.WriteJSON(w, http.StatusCreated, buildAuthResponse(httputil.UUIDString(user.ID), user.Email, user.Username, channel.ID, channel.Title, channel.Category, channel.IsLive))
 }
 
 func (h *Handler) finishLogin(w http.ResponseWriter, r *http.Request, userID pgtype.UUID) {
 	cookie, err := h.createSession(r.Context(), userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	http.SetCookie(w, cookie)

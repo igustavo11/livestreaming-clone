@@ -1,6 +1,7 @@
 package ingest
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -50,6 +51,7 @@ func (h *Handler) Auth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req authRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -89,6 +91,7 @@ func (h *Handler) Hook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req hookRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -141,7 +144,7 @@ func (h *Handler) Hook(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) checkSecret(w http.ResponseWriter, r *http.Request) bool {
 	secret := r.Header.Get("X-Internal-Secret")
-	if secret == "" || secret != h.internalSecret {
+	if secret == "" || subtle.ConstantTimeCompare([]byte(secret), []byte(h.internalSecret)) != 1 {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return false
 	}

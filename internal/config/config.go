@@ -21,6 +21,7 @@ type Config struct {
 	ResendFrom         string
 	InternalSecret     string
 	MediaMTXURL        string
+	CookieSecure       bool
 }
 
 func Load() (Config, error) {
@@ -39,7 +40,8 @@ func Load() (Config, error) {
 		ResendAPIKey:       os.Getenv("RESEND_API_KEY"),
 		ResendFrom:         getEnv("RESEND_FROM", "noreply@localhost"),
 		InternalSecret:     os.Getenv("INTERNAL_SECRET"),
-		MediaMTXURL:        getEnv("MEDIAMTX_URL", "http://mediamtx:9997"),
+		MediaMTXURL:        getEnv("MEDIAMTX_URL", ""),
+		CookieSecure:       getEnv("COOKIE_SECURE", "true") == "true",
 	}
 
 	if cfg.DatabaseURL == "" {

@@ -2,7 +2,6 @@ package channel
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/igustavo11/livestreaming-clone/internal/auth"
 	"github.com/igustavo11/livestreaming-clone/internal/db"
+	"github.com/igustavo11/livestreaming-clone/internal/httputil"
 	"github.com/igustavo11/livestreaming-clone/internal/storage"
 	"github.com/igustavo11/livestreaming-clone/internal/streamkey"
 )
@@ -71,13 +71,13 @@ type updateRequest struct {
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.UserFromContext(r.Context())
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "authentication required")
+		httputil.WriteError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
 
-	row, err := h.queries.GetChannelDashboardByUserID(r.Context(), parseUUID(user.ID))
+	row, err := h.queries.GetChannelDashboardByUserID(r.Context(), httputil.ParseUUID(user.ID))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -85,72 +85,73 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 	if row.StreamKeyPreview != "" {
 		preview = row.StreamKeyPreview
 	}
-	writeJSON(w, http.StatusOK, channelResponse{Channel: toJSON(row.ID, row.Username, row.Title, row.Category, row.ThumbnailUrl, row.IsLive, preview)})
+	httputil.WriteJSON(w, http.StatusOK, channelResponse{Channel: toJSON(row.ID, row.Username, row.Title, row.Category, row.ThumbnailUrl, row.IsLive, preview)})
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.UserFromContext(r.Context())
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "authentication required")
+		httputil.WriteError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req updateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if err := httputil.DecodeJSON(r, &req); err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	req.Title = strings.TrimSpace(req.Title)
 	if len(req.Title) > maxTitleLen {
-		writeError(w, http.StatusUnprocessableEntity, "title too long")
+		httputil.WriteError(w, http.StatusUnprocessableEntity, "title too long")
 		return
 	}
 	req.Category = strings.TrimSpace(req.Category)
 	if req.Category != "" && !ValidCategory(req.Category) {
-		writeError(w, http.StatusUnprocessableEntity, "invalid category")
+		httputil.WriteError(w, http.StatusUnprocessableEntity, "invalid category")
 		return
 	}
 
 	ch, err := h.queries.UpdateChannelMetadata(r.Context(), db.UpdateChannelMetadataParams{
-		UserID:   parseUUID(user.ID),
+		UserID:   httputil.ParseUUID(user.ID),
 		Title:    req.Title,
 		Category: req.Category,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, channelResponse{Channel: toJSON(ch.ID, user.Username, ch.Title, ch.Category, ch.ThumbnailUrl, ch.IsLive, ch.StreamKeyPreview)})
+	httputil.WriteJSON(w, http.StatusOK, channelResponse{Channel: toJSON(ch.ID, user.Username, ch.Title, ch.Category, ch.ThumbnailUrl, ch.IsLive, ch.StreamKeyPreview)})
 }
 
 func (h *Handler) rotateStreamKey(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.UserFromContext(r.Context())
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "authentication required")
+		httputil.WriteError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
 
 	fullKey, err := streamkey.Generate()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	preview := streamkey.Preview(fullKey)
 	ch, err := h.queries.UpdateChannelStreamKey(r.Context(), db.UpdateChannelStreamKeyParams{
-		UserID:           parseUUID(user.ID),
+		UserID:           httputil.ParseUUID(user.ID),
 		StreamKeyHash:    pgtype.Text{String: streamkey.Hash(fullKey), Valid: true},
 		StreamKeyPreview: preview,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	// Full key is returned exactly once at generation; never stored in plaintext.
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"stream_key": fullKey,
 		"channel":    toJSON(ch.ID, user.Username, ch.Title, ch.Category, ch.ThumbnailUrl, ch.IsLive, ch.StreamKeyPreview),
 	})
@@ -159,73 +160,71 @@ func (h *Handler) rotateStreamKey(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) uploadThumbnail(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.UserFromContext(r.Context())
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "authentication required")
+		httputil.WriteError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
 
 	if h.store == nil {
-		writeError(w, http.StatusServiceUnavailable, "thumbnail storage unavailable")
+		httputil.WriteError(w, http.StatusServiceUnavailable, "thumbnail storage unavailable")
 		return
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxThumbnailBytes+512*1024)
 	if err := r.ParseMultipartForm(maxThumbnailBytes + 512*1024); err != nil {
-		writeError(w, http.StatusRequestEntityTooLarge, "thumbnail too large")
+		httputil.WriteError(w, http.StatusRequestEntityTooLarge, "thumbnail too large")
 		return
 	}
 
-	file, header, err := r.FormFile("thumbnail")
+	file, _, err := r.FormFile("thumbnail")
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "thumbnail file required")
+		httputil.WriteError(w, http.StatusBadRequest, "thumbnail file required")
 		return
 	}
 	defer file.Close()
 
 	data, err := io.ReadAll(io.LimitReader(file, maxThumbnailBytes+1))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "failed to read thumbnail")
+		httputil.WriteError(w, http.StatusBadRequest, "failed to read thumbnail")
 		return
 	}
 	if len(data) > maxThumbnailBytes {
-		writeError(w, http.StatusRequestEntityTooLarge, "thumbnail too large")
+		httputil.WriteError(w, http.StatusRequestEntityTooLarge, "thumbnail too large")
 		return
 	}
 	if len(data) == 0 {
-		writeError(w, http.StatusUnprocessableEntity, "thumbnail empty")
+		httputil.WriteError(w, http.StatusUnprocessableEntity, "thumbnail empty")
 		return
 	}
 
-	contentType := header.Header.Get("Content-Type")
+	// Always validate content type against actual file contents, ignoring client header
+	contentType := http.DetectContentType(data)
 	contentType = strings.TrimSpace(strings.Split(contentType, ";")[0])
-	if contentType == "" || contentType == "application/octet-stream" {
-		contentType = http.DetectContentType(data)
-	}
 	ext, ok := allowedThumbnailTypes[contentType]
 	if !ok {
-		writeError(w, http.StatusUnprocessableEntity, "thumbnail must be jpeg, png, or webp")
+		httputil.WriteError(w, http.StatusUnprocessableEntity, "thumbnail must be jpeg, png, or webp")
 		return
 	}
 
-	existing, err := h.queries.GetChannelByUserID(r.Context(), parseUUID(user.ID))
+	existing, err := h.queries.GetChannelByUserID(r.Context(), httputil.ParseUUID(user.ID))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
-	key := fmt.Sprintf("thumbnails/%s/%s%s", uuidString(existing.ID), uuid.NewString(), ext)
+	key := fmt.Sprintf("thumbnails/%s/%s%s", httputil.UUIDString(existing.ID), uuid.NewString(), ext)
 	publicURL, err := h.store.Put(r.Context(), key, contentType, bytes.NewReader(data), int64(len(data)))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to store thumbnail")
+		httputil.WriteError(w, http.StatusInternalServerError, "failed to store thumbnail")
 		return
 	}
 
 	ch, err := h.queries.UpdateChannelThumbnail(r.Context(), db.UpdateChannelThumbnailParams{
-		UserID:       parseUUID(user.ID),
+		UserID:       httputil.ParseUUID(user.ID),
 		ThumbnailUrl: publicURL,
 	})
 	if err != nil {
 		_ = h.store.Delete(r.Context(), key)
-		writeError(w, http.StatusInternalServerError, "internal error")
+		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -235,12 +234,12 @@ func (h *Handler) uploadThumbnail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, channelResponse{Channel: toJSON(ch.ID, user.Username, ch.Title, ch.Category, ch.ThumbnailUrl, ch.IsLive, ch.StreamKeyPreview)})
+	httputil.WriteJSON(w, http.StatusOK, channelResponse{Channel: toJSON(ch.ID, user.Username, ch.Title, ch.Category, ch.ThumbnailUrl, ch.IsLive, ch.StreamKeyPreview)})
 }
 
 func toJSON(id pgtype.UUID, username, title, category, thumbnailURL string, isLive bool, streamKeyPreview string) channelJSON {
 	return channelJSON{
-		ID:               uuidString(id),
+		ID:               httputil.UUIDString(id),
 		Username:         username,
 		Title:            title,
 		Category:         category,
@@ -256,32 +255,4 @@ func keyFromPublicURL(publicURL string) string {
 		return path.Base(publicURL)
 	}
 	return publicURL[idx+1:]
-}
-
-func parseUUID(s string) pgtype.UUID {
-	var u pgtype.UUID
-	_ = u.Scan(s)
-	return u
-}
-
-func uuidString(u pgtype.UUID) string {
-	if !u.Valid {
-		return ""
-	}
-	v, err := u.Value()
-	if err != nil {
-		return ""
-	}
-	s, _ := v.(string)
-	return s
-}
-
-func writeJSON(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func writeError(w http.ResponseWriter, code int, message string) {
-	writeJSON(w, code, map[string]string{"error": message})
 }
