@@ -1,0 +1,9 @@
+.git
+.gitignore
+.env
+.env.*
+data/
+web/node_modules/
+web/.next/
+docs/
+*.md
