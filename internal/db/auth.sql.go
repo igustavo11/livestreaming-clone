@@ -99,7 +99,7 @@ func (q *Queries) DeleteSession(ctx context.Context, tokenHash string) error {
 }
 
 const getChannelByUserID = `-- name: GetChannelByUserID :one
-SELECT id, user_id, title, category, thumbnail_url, stream_key_hash, is_live, created_at FROM channels WHERE user_id = $1
+SELECT id, user_id, title, category, thumbnail_url, stream_key_hash, is_live, created_at, stream_key_preview FROM channels WHERE user_id = $1
 `
 
 func (q *Queries) GetChannelByUserID(ctx context.Context, userID pgtype.UUID) (Channel, error) {
@@ -114,6 +114,7 @@ func (q *Queries) GetChannelByUserID(ctx context.Context, userID pgtype.UUID) (C
 		&i.StreamKeyHash,
 		&i.IsLive,
 		&i.CreatedAt,
+		&i.StreamKeyPreview,
 	)
 	return i, err
 }

@@ -9,14 +9,15 @@ import (
 )
 
 type Channel struct {
-	ID            pgtype.UUID
-	UserID        pgtype.UUID
-	Title         string
-	Category      string
-	ThumbnailUrl  string
-	StreamKeyHash pgtype.Text
-	IsLive        bool
-	CreatedAt     pgtype.Timestamptz
+	ID               pgtype.UUID
+	UserID           pgtype.UUID
+	Title            string
+	Category         string
+	ThumbnailUrl     string
+	StreamKeyHash    pgtype.Text
+	IsLive           bool
+	CreatedAt        pgtype.Timestamptz
+	StreamKeyPreview string
 }
 
 type Identity struct {

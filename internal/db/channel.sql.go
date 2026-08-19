@@ -11,6 +11,41 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getChannelByStreamKeyHash = `-- name: GetChannelByStreamKeyHash :one
+SELECT id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at
+FROM channels
+WHERE stream_key_hash = $1
+`
+
+type GetChannelByStreamKeyHashRow struct {
+	ID               pgtype.UUID
+	UserID           pgtype.UUID
+	Title            string
+	Category         string
+	ThumbnailUrl     string
+	StreamKeyHash    pgtype.Text
+	StreamKeyPreview string
+	IsLive           bool
+	CreatedAt        pgtype.Timestamptz
+}
+
+func (q *Queries) GetChannelByStreamKeyHash(ctx context.Context, streamKeyHash pgtype.Text) (GetChannelByStreamKeyHashRow, error) {
+	row := q.db.QueryRow(ctx, getChannelByStreamKeyHash, streamKeyHash)
+	var i GetChannelByStreamKeyHashRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Title,
+		&i.Category,
+		&i.ThumbnailUrl,
+		&i.StreamKeyHash,
+		&i.StreamKeyPreview,
+		&i.IsLive,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getChannelDashboardByUserID = `-- name: GetChannelDashboardByUserID :one
 SELECT
     c.id,
@@ -19,6 +54,7 @@ SELECT
     c.category,
     c.thumbnail_url,
     c.stream_key_hash,
+    c.stream_key_preview,
     c.is_live,
     c.created_at,
     u.username
@@ -28,15 +64,16 @@ WHERE c.user_id = $1
 `
 
 type GetChannelDashboardByUserIDRow struct {
-	ID            pgtype.UUID
-	UserID        pgtype.UUID
-	Title         string
-	Category      string
-	ThumbnailUrl  string
-	StreamKeyHash pgtype.Text
-	IsLive        bool
-	CreatedAt     pgtype.Timestamptz
-	Username      string
+	ID               pgtype.UUID
+	UserID           pgtype.UUID
+	Title            string
+	Category         string
+	ThumbnailUrl     string
+	StreamKeyHash    pgtype.Text
+	StreamKeyPreview string
+	IsLive           bool
+	CreatedAt        pgtype.Timestamptz
+	Username         string
 }
 
 func (q *Queries) GetChannelDashboardByUserID(ctx context.Context, userID pgtype.UUID) (GetChannelDashboardByUserIDRow, error) {
@@ -49,6 +86,7 @@ func (q *Queries) GetChannelDashboardByUserID(ctx context.Context, userID pgtype
 		&i.Category,
 		&i.ThumbnailUrl,
 		&i.StreamKeyHash,
+		&i.StreamKeyPreview,
 		&i.IsLive,
 		&i.CreatedAt,
 		&i.Username,
@@ -60,7 +98,7 @@ const updateChannelMetadata = `-- name: UpdateChannelMetadata :one
 UPDATE channels
 SET title = $2, category = $3
 WHERE user_id = $1
-RETURNING id, user_id, title, category, thumbnail_url, stream_key_hash, is_live, created_at
+RETURNING id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at
 `
 
 type UpdateChannelMetadataParams struct {
@@ -69,9 +107,21 @@ type UpdateChannelMetadataParams struct {
 	Category string
 }
 
-func (q *Queries) UpdateChannelMetadata(ctx context.Context, arg UpdateChannelMetadataParams) (Channel, error) {
+type UpdateChannelMetadataRow struct {
+	ID               pgtype.UUID
+	UserID           pgtype.UUID
+	Title            string
+	Category         string
+	ThumbnailUrl     string
+	StreamKeyHash    pgtype.Text
+	StreamKeyPreview string
+	IsLive           bool
+	CreatedAt        pgtype.Timestamptz
+}
+
+func (q *Queries) UpdateChannelMetadata(ctx context.Context, arg UpdateChannelMetadataParams) (UpdateChannelMetadataRow, error) {
 	row := q.db.QueryRow(ctx, updateChannelMetadata, arg.UserID, arg.Title, arg.Category)
-	var i Channel
+	var i UpdateChannelMetadataRow
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -79,6 +129,49 @@ func (q *Queries) UpdateChannelMetadata(ctx context.Context, arg UpdateChannelMe
 		&i.Category,
 		&i.ThumbnailUrl,
 		&i.StreamKeyHash,
+		&i.StreamKeyPreview,
+		&i.IsLive,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const updateChannelStreamKey = `-- name: UpdateChannelStreamKey :one
+UPDATE channels
+SET stream_key_hash = $2, stream_key_preview = $3
+WHERE user_id = $1
+RETURNING id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at
+`
+
+type UpdateChannelStreamKeyParams struct {
+	UserID           pgtype.UUID
+	StreamKeyHash    pgtype.Text
+	StreamKeyPreview string
+}
+
+type UpdateChannelStreamKeyRow struct {
+	ID               pgtype.UUID
+	UserID           pgtype.UUID
+	Title            string
+	Category         string
+	ThumbnailUrl     string
+	StreamKeyHash    pgtype.Text
+	StreamKeyPreview string
+	IsLive           bool
+	CreatedAt        pgtype.Timestamptz
+}
+
+func (q *Queries) UpdateChannelStreamKey(ctx context.Context, arg UpdateChannelStreamKeyParams) (UpdateChannelStreamKeyRow, error) {
+	row := q.db.QueryRow(ctx, updateChannelStreamKey, arg.UserID, arg.StreamKeyHash, arg.StreamKeyPreview)
+	var i UpdateChannelStreamKeyRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Title,
+		&i.Category,
+		&i.ThumbnailUrl,
+		&i.StreamKeyHash,
+		&i.StreamKeyPreview,
 		&i.IsLive,
 		&i.CreatedAt,
 	)
@@ -89,7 +182,7 @@ const updateChannelThumbnail = `-- name: UpdateChannelThumbnail :one
 UPDATE channels
 SET thumbnail_url = $2
 WHERE user_id = $1
-RETURNING id, user_id, title, category, thumbnail_url, stream_key_hash, is_live, created_at
+RETURNING id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at
 `
 
 type UpdateChannelThumbnailParams struct {
@@ -97,9 +190,21 @@ type UpdateChannelThumbnailParams struct {
 	ThumbnailUrl string
 }
 
-func (q *Queries) UpdateChannelThumbnail(ctx context.Context, arg UpdateChannelThumbnailParams) (Channel, error) {
+type UpdateChannelThumbnailRow struct {
+	ID               pgtype.UUID
+	UserID           pgtype.UUID
+	Title            string
+	Category         string
+	ThumbnailUrl     string
+	StreamKeyHash    pgtype.Text
+	StreamKeyPreview string
+	IsLive           bool
+	CreatedAt        pgtype.Timestamptz
+}
+
+func (q *Queries) UpdateChannelThumbnail(ctx context.Context, arg UpdateChannelThumbnailParams) (UpdateChannelThumbnailRow, error) {
 	row := q.db.QueryRow(ctx, updateChannelThumbnail, arg.UserID, arg.ThumbnailUrl)
-	var i Channel
+	var i UpdateChannelThumbnailRow
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -107,6 +212,7 @@ func (q *Queries) UpdateChannelThumbnail(ctx context.Context, arg UpdateChannelT
 		&i.Category,
 		&i.ThumbnailUrl,
 		&i.StreamKeyHash,
+		&i.StreamKeyPreview,
 		&i.IsLive,
 		&i.CreatedAt,
 	)

@@ -16,6 +16,7 @@ import (
 	"github.com/igustavo11/livestreaming-clone/internal/auth"
 	"github.com/igustavo11/livestreaming-clone/internal/db"
 	"github.com/igustavo11/livestreaming-clone/internal/storage"
+	"github.com/igustavo11/livestreaming-clone/internal/streamkey"
 )
 
 const (
@@ -44,6 +45,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/", h.get)
 	r.Put("/", h.update)
 	r.Post("/thumbnail", h.uploadThumbnail)
+	r.Post("/stream-key", h.rotateStreamKey)
 	return r
 }
 
@@ -79,7 +81,11 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, channelResponse{Channel: toJSON(row.ID, row.Username, row.Title, row.Category, row.ThumbnailUrl, row.IsLive)})
+	preview := ""
+	if row.StreamKeyPreview != "" {
+		preview = row.StreamKeyPreview
+	}
+	writeJSON(w, http.StatusOK, channelResponse{Channel: toJSON(row.ID, row.Username, row.Title, row.Category, row.ThumbnailUrl, row.IsLive, preview)})
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
@@ -116,7 +122,38 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, channelResponse{Channel: toJSON(ch.ID, user.Username, ch.Title, ch.Category, ch.ThumbnailUrl, ch.IsLive)})
+	writeJSON(w, http.StatusOK, channelResponse{Channel: toJSON(ch.ID, user.Username, ch.Title, ch.Category, ch.ThumbnailUrl, ch.IsLive, ch.StreamKeyPreview)})
+}
+
+func (h *Handler) rotateStreamKey(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	fullKey, err := streamkey.Generate()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	preview := streamkey.Preview(fullKey)
+	ch, err := h.queries.UpdateChannelStreamKey(r.Context(), db.UpdateChannelStreamKeyParams{
+		UserID:           parseUUID(user.ID),
+		StreamKeyHash:    pgtype.Text{String: streamkey.Hash(fullKey), Valid: true},
+		StreamKeyPreview: preview,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Full key is returned exactly once at generation; never stored in plaintext.
+	writeJSON(w, http.StatusOK, map[string]any{
+		"stream_key": fullKey,
+		"channel":    toJSON(ch.ID, user.Username, ch.Title, ch.Category, ch.ThumbnailUrl, ch.IsLive, ch.StreamKeyPreview),
+	})
 }
 
 func (h *Handler) uploadThumbnail(w http.ResponseWriter, r *http.Request) {
@@ -198,10 +235,10 @@ func (h *Handler) uploadThumbnail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, channelResponse{Channel: toJSON(ch.ID, user.Username, ch.Title, ch.Category, ch.ThumbnailUrl, ch.IsLive)})
+	writeJSON(w, http.StatusOK, channelResponse{Channel: toJSON(ch.ID, user.Username, ch.Title, ch.Category, ch.ThumbnailUrl, ch.IsLive, ch.StreamKeyPreview)})
 }
 
-func toJSON(id pgtype.UUID, username, title, category, thumbnailURL string, isLive bool) channelJSON {
+func toJSON(id pgtype.UUID, username, title, category, thumbnailURL string, isLive bool, streamKeyPreview string) channelJSON {
 	return channelJSON{
 		ID:               uuidString(id),
 		Username:         username,
@@ -209,7 +246,7 @@ func toJSON(id pgtype.UUID, username, title, category, thumbnailURL string, isLi
 		Category:         category,
 		ThumbnailURL:     thumbnailURL,
 		IsLive:           isLive,
-		StreamKeyPreview: "",
+		StreamKeyPreview: streamKeyPreview,
 	}
 }
 

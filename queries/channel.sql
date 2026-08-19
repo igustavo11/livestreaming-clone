@@ -6,6 +6,7 @@ SELECT
     c.category,
     c.thumbnail_url,
     c.stream_key_hash,
+    c.stream_key_preview,
     c.is_live,
     c.created_at,
     u.username
@@ -17,10 +18,21 @@ WHERE c.user_id = $1;
 UPDATE channels
 SET title = $2, category = $3
 WHERE user_id = $1
-RETURNING id, user_id, title, category, thumbnail_url, stream_key_hash, is_live, created_at;
+RETURNING id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at;
 
 -- name: UpdateChannelThumbnail :one
 UPDATE channels
 SET thumbnail_url = $2
 WHERE user_id = $1
-RETURNING id, user_id, title, category, thumbnail_url, stream_key_hash, is_live, created_at;
+RETURNING id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at;
+
+-- name: UpdateChannelStreamKey :one
+UPDATE channels
+SET stream_key_hash = $2, stream_key_preview = $3
+WHERE user_id = $1
+RETURNING id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at;
+
+-- name: GetChannelByStreamKeyHash :one
+SELECT id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at
+FROM channels
+WHERE stream_key_hash = $1;
