@@ -20,3 +20,6 @@ test:
 
 vet:
 	go vet ./...
+
+build-hlsupload:
+	CGO_ENABLED=0 go build -o bin/hlsupload ./cmd/hlsupload
