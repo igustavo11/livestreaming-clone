@@ -42,6 +42,12 @@ UPDATE channels
 SET is_live = $2
 WHERE id = $1;
 
+-- name: GetChannelUsernameByStreamKeyHash :one
+SELECT u.username
+FROM channels c
+JOIN users u ON u.id = c.user_id
+WHERE c.stream_key_hash = $1;
+
 -- name: GetAllLiveChannels :many
 SELECT id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at
 FROM channels

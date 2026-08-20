@@ -142,6 +142,20 @@ func (q *Queries) GetChannelDashboardByUserID(ctx context.Context, userID pgtype
 	return i, err
 }
 
+const getChannelUsernameByStreamKeyHash = `-- name: GetChannelUsernameByStreamKeyHash :one
+SELECT u.username
+FROM channels c
+JOIN users u ON u.id = c.user_id
+WHERE c.stream_key_hash = $1
+`
+
+func (q *Queries) GetChannelUsernameByStreamKeyHash(ctx context.Context, streamKeyHash pgtype.Text) (string, error) {
+	row := q.db.QueryRow(ctx, getChannelUsernameByStreamKeyHash, streamKeyHash)
+	var username string
+	err := row.Scan(&username)
+	return username, err
+}
+
 const setChannelLive = `-- name: SetChannelLive :exec
 UPDATE channels
 SET is_live = $2
