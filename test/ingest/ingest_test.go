@@ -345,3 +345,20 @@ func TestReconcilerCorrectsLiveDrift(t *testing.T) {
 		t.Error("channel still live after stream-unavailable")
 	}
 }
+
+func TestMediamtxAuthAllowsLoopbackRead(t *testing.T) {
+	cleanTables(t)
+	handler := newRouter()
+	cookie := signup(t, handler, "read@example.com", "readuser")
+	key := rotateKey(t, handler, cookie)
+
+	// Read action from loopback IP should be allowed
+	rec := doJSON(t, handler, http.MethodPost, "/internal/mediamtx/auth", map[string]string{
+		"action": "read",
+		"path":   "live/" + key,
+		"ip":     "127.0.0.1",
+	}, authHeaders(testInternalSecret))
+	if rec.Code != http.StatusOK {
+		t.Errorf("loopback read: status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+}

@@ -3,6 +3,7 @@ package ingest
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"net"
 	"net/http"
 	"strings"
 
@@ -37,6 +38,7 @@ func (h *Handler) Routes() chi.Router {
 type authRequest struct {
 	Action string `json:"action"`
 	Path   string `json:"path"`
+	IP     string `json:"ip"`
 }
 
 type hookRequest struct {
@@ -55,6 +57,12 @@ func (h *Handler) Auth(w http.ResponseWriter, r *http.Request) {
 	var req authRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Allow read action only from loopback (ffmpeg inside the container)
+	if req.Action == "read" && isLoopback(req.IP) {
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 
@@ -164,4 +172,9 @@ func writeError(w http.ResponseWriter, code int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+func isLoopback(ip string) bool {
+	parsed := net.ParseIP(ip)
+	return parsed != nil && parsed.IsLoopback()
 }
