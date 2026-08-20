@@ -11,6 +11,10 @@
 		reverse_proxy server:8080
 	}
 
+	handle /player/* {
+		reverse_proxy server:8080
+	}
+
 	handle /ws/* {
 		reverse_proxy server:8080
 	}

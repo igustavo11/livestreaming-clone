@@ -1,8 +1,10 @@
 package app
 
 import (
+	_ "embed"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,7 +17,10 @@ import (
 	"github.com/igustavo11/livestreaming-clone/internal/storage"
 )
 
-func NewRouter(pool *pgxpool.Pool, queries *db.Queries, google auth.GoogleAuth, pendingSecret string, store storage.ObjectStorage, mailer email.Sender, publicBaseURL string, internalSecret string, mediamtxURL string, cookieSecure bool) http.Handler {
+//go:embed player.html
+var playerHTML string
+
+func NewRouter(pool *pgxpool.Pool, queries *db.Queries, google auth.GoogleAuth, pendingSecret string, store storage.ObjectStorage, mailer email.Sender, publicBaseURL string, internalSecret string, mediamtxURL string, cookieSecure bool, r2PublicBaseURL ...string) http.Handler {
 	r := chi.NewRouter()
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -47,5 +52,33 @@ func NewRouter(pool *pgxpool.Pool, queries *db.Queries, google auth.GoogleAuth, 
 		r.Post("/hook", ingestHandler.Hook)
 	})
 
+	var cdnBase string
+	if len(r2PublicBaseURL) > 0 {
+		cdnBase = strings.TrimRight(r2PublicBaseURL[0], "/")
+	}
+	r.Get("/player/{username}", func(w http.ResponseWriter, r *http.Request) {
+		username := chi.URLParam(r, "username")
+		if !isValidUsername(username) {
+			http.NotFound(w, r)
+			return
+		}
+		hlsURL := cdnBase + "/hls/" + username + "/index.m3u8"
+		html := strings.ReplaceAll(playerHTML, "__HLS_URL__", hlsURL)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(html))
+	})
+
 	return r
+}
+
+func isValidUsername(s string) bool {
+	if len(s) < 3 || len(s) > 25 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') {
+			return false
+		}
+	}
+	return true
 }

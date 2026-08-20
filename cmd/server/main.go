@@ -92,7 +92,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           app.NewRouter(pool, db.New(pool), google, cfg.AuthSecret, objectStore, mailer, cfg.PublicBaseURL, cfg.InternalSecret, cfg.MediaMTXURL, cfg.CookieSecure),
+		Handler:           app.NewRouter(pool, db.New(pool), google, cfg.AuthSecret, objectStore, mailer, cfg.PublicBaseURL, cfg.InternalSecret, cfg.MediaMTXURL, cfg.CookieSecure, cfg.R2PublicBaseURL),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
