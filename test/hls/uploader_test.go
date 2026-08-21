@@ -122,3 +122,29 @@ func TestSegmentNotReuploaded(t *testing.T) {
 		t.Errorf("after reupload: store.Len() = %d, want 1 (no re-upload)", store.Len())
 	}
 }
+
+func TestSegmentReuploadedWhenContentChanges(t *testing.T) {
+	store := storage.NewMemory("https://cdn.test")
+	resolver := hls.SimpleResolver(map[string]string{"live_abc123": "streamer1"})
+	up := hls.NewUploader(store, resolver)
+
+	seg := filepath.Join(t.TempDir(), "seg_00001.ts")
+	if err := os.WriteFile(seg, []byte("v1"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := up.Upload(ctx, "live/live_abc123/seg_00001.ts", seg); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(seg, []byte("v2"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := up.Upload(ctx, "live/live_abc123/seg_00001.ts", seg); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := store.Get("hls/streamer1/seg_00001.ts")
+	if string(data) != "v2" {
+		t.Errorf("updated segment = %q, want v2", string(data))
+	}
+}

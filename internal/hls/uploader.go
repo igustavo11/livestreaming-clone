@@ -2,6 +2,7 @@ package hls
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
@@ -33,14 +34,14 @@ func (r *resolverMap) Resolve(streamKey string) (string, bool) {
 type Uploader struct {
 	store    storage.ObjectStorage
 	resolver Resolver
-	uploaded map[string]bool
+	uploaded map[string]string
 }
 
 func NewUploader(store storage.ObjectStorage, resolver Resolver) *Uploader {
 	return &Uploader{
 		store:    store,
 		resolver: resolver,
-		uploaded: make(map[string]bool),
+		uploaded: make(map[string]string),
 	}
 }
 
@@ -59,10 +60,6 @@ func (u *Uploader) Upload(ctx context.Context, path, filePath string) error {
 
 	storageKey := "hls/" + username + "/" + filename
 
-	if u.uploaded[storageKey] {
-		return nil
-	}
-
 	f, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("hls: open %s: %w", filePath, err)
@@ -72,6 +69,10 @@ func (u *Uploader) Upload(ctx context.Context, path, filePath string) error {
 	data, err := io.ReadAll(f)
 	if err != nil {
 		return fmt.Errorf("hls: read %s: %w", filePath, err)
+	}
+	fingerprint := fmt.Sprintf("%x", sha256.Sum256(data))
+	if !strings.HasSuffix(filename, ".m3u8") && u.uploaded[storageKey] == fingerprint {
+		return nil
 	}
 
 	contentType := contentTypeFor(filename)
@@ -85,7 +86,7 @@ func (u *Uploader) Upload(ctx context.Context, path, filePath string) error {
 	// Segments are immutable — mark as uploaded to skip future re-uploads.
 	// Playlists change frequently — always re-upload them.
 	if !strings.HasSuffix(filename, ".m3u8") {
-		u.uploaded[storageKey] = true
+		u.uploaded[storageKey] = fingerprint
 	}
 	return nil
 }
