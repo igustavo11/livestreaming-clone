@@ -23,20 +23,22 @@ authHTTPExclude:
   - action: pprof
 
 pathDefaults:
-  # Hooks for stream lifecycle events
-  runOnAvailable: curl -s -X POST http://server:8080/internal/mediamtx/hook -H "Content-Type: application/json" -H "X-Internal-Secret: $INTERNAL_SECRET" -d '{"event":"stream-available","path":"$MTX_PATH"}'
-  runOnUnavailable: curl -s -X POST http://server:8080/internal/mediamtx/hook -H "Content-Type: application/json" -H "X-Internal-Secret: $INTERNAL_SECRET" -d '{"event":"stream-unavailable","path":"$MTX_PATH"}'
-  # Transcode to 720p30 HLS and write segments to shared staging volume
-  runOnReady: >
+  # Notify Go server + start ffmpeg transcoder
+  runOnAvailable: >
     /bin/sh -c '
-      mkdir -p /staging/$MTX_PATH &&
-      ffmpeg -y -i rtmp://localhost:1935/$MTX_PATH
-        -c:v libx264 -preset fast -s 1280x720 -r 30 -g 60
-        -c:a aac -b:a 128k
-        -f hls -hls_time 2 -hls_list_size 6 -hls_flags independent_segments+delete_segments
-        -hls_segment_filename /staging/$MTX_PATH/seg_%05d.ts
-        /staging/$MTX_PATH/index.m3u8
+    curl -s -X POST http://server:8080/internal/mediamtx/hook
+    -H "Content-Type: application/json"
+    -H "X-Internal-Secret: $INTERNAL_SECRET"
+    -d "{\"event\":\"stream-available\",\"path\":\"$MTX_PATH\"}" &&
+    mkdir -p /staging/$MTX_PATH &&
+    ffmpeg -y -analyzeduration 10M -probesize 10M -i rtmp://localhost:1935/$MTX_PATH
+    -map 0:v:0 -map 0:a:0? -c:v libx264 -preset fast -s 1280x720 -r 30 -g 60
+    -c:a aac -b:a 128k
+    -f hls -hls_time 2 -hls_list_size 6 -hls_flags independent_segments+delete_segments
+    -hls_segment_filename /staging/$MTX_PATH/seg_%05d.ts
+    /staging/$MTX_PATH/index.m3u8
     '
+  runOnUnavailable: "curl -s -X POST http://server:8080/internal/mediamtx/hook -H \"Content-Type: application/json\" -H \"X-Internal-Secret: $INTERNAL_SECRET\" -d '{\"event\":\"stream-unavailable\",\"path\":\"$MTX_PATH\"}'"
 
 paths:
   all:

@@ -1,5 +1,7 @@
-FROM bluenviron/mediamtx:latest
-
+FROM alpine:3.20
 RUN apk add --no-cache ffmpeg curl
-
+# Download mediamtx binary
+ARG MEDIAMTX_VERSION=v1.20.1
+RUN curl -fsSL https://github.com/bluenviron/mediamtx/releases/download/${MEDIAMTX_VERSION}/mediamtx_${MEDIAMTX_VERSION}_linux_amd64.tar.gz | tar xz -C /usr/bin mediamtx
 COPY deploy/mediamtx.yml /mediamtx.yml
+ENTRYPOINT ["mediamtx"]

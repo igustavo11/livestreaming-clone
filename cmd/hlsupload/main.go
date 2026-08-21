@@ -50,11 +50,11 @@ func main() {
 
 	var objectStore storage.ObjectStorage
 	r2, err := storage.NewR2(storage.R2Config{
-		AccountID:     cfg.R2AccountID,
-		AccessKeyID:   cfg.R2AccessKeyID,
+		AccountID:       cfg.R2AccountID,
+		AccessKeyID:     cfg.R2AccessKeyID,
 		SecretAccessKey: cfg.R2SecretAccessKey,
-		Bucket:        cfg.R2Bucket,
-		PublicBaseURL: cfg.R2PublicBaseURL,
+		Bucket:          cfg.R2Bucket,
+		PublicBaseURL:   cfg.R2PublicBaseURL,
 	})
 	if err != nil {
 		logger.Error("failed to configure r2", "error", err)
@@ -111,7 +111,7 @@ func scanAndUpload(ctx context.Context, up *hls.Uploader, stagingDir string) err
 
 		// Convert OS path separators to slash and prefix with "live/"
 		slug := strings.ReplaceAll(rel, string(filepath.Separator), "/")
-		if !strings.HasPrefix(slug, "live/") {
+		if !strings.HasPrefix(slug, "live/") && !strings.HasPrefix(slug, "live_") {
 			return nil
 		}
 

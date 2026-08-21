@@ -26,7 +26,7 @@ services:
       context: .
       dockerfile: deploy/Dockerfile.mediamtx
     environment:
-      INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-internal-secret}
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
     volumes:
       - ./deploy/mediamtx.yml:/mediamtx.yml
       - hls_staging:/staging
@@ -37,9 +37,11 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile.server
-    command: ["hlsupload"]
+    entrypoint: ["hlsupload"]
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-guguinha}:${POSTGRES_PASSWORD:-guguinha}@postgres:5432/${POSTGRES_DB:-guguinha}?sslmode=disable
+      AUTH_SECRET: ${AUTH_SECRET:-dev-secret-change-me}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-internal-secret}
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}

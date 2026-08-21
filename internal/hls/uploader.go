@@ -92,10 +92,14 @@ func (u *Uploader) Upload(ctx context.Context, path, filePath string) error {
 
 func parsePath(path string) (streamKey, filename string) {
 	parts := strings.SplitN(path, "/", 3)
-	if len(parts) != 3 || parts[0] != "live" {
-		return "", ""
+	if len(parts) == 3 && parts[0] == "live" {
+		return parts[1], parts[2]
 	}
-	return parts[1], parts[2]
+	parts = strings.SplitN(path, "/", 2)
+	if len(parts) == 2 && strings.HasPrefix(parts[0], "live_") {
+		return parts[0], parts[1]
+	}
+	return "", ""
 }
 
 func contentTypeFor(filename string) string {

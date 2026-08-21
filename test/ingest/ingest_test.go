@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	testPendingSecret = "test-pending-secret"
+	testPendingSecret  = "test-pending-secret"
 	testInternalSecret = "test-internal-secret"
 )
 
@@ -162,6 +162,21 @@ func TestMediamtxAuthAcceptsValidKey(t *testing.T) {
 	}
 }
 
+func TestMediamtxAuthAcceptsRootRTMPPath(t *testing.T) {
+	cleanTables(t)
+	handler := newRouter()
+	cookie := signup(t, handler, "rootpath@example.com", "rootpath")
+	key := rotateKey(t, handler, cookie)
+
+	rec := doJSON(t, handler, http.MethodPost, "/internal/mediamtx/auth", map[string]string{
+		"action": "publish",
+		"path":   key,
+	}, authHeaders(testInternalSecret))
+	if rec.Code != http.StatusOK {
+		t.Errorf("root RTMP path: status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestMediamtxAuthRejectsAlreadyLive(t *testing.T) {
 	cleanTables(t)
 	handler := newRouter()
@@ -170,8 +185,8 @@ func TestMediamtxAuthRejectsAlreadyLive(t *testing.T) {
 
 	// Simulate stream going live via hook
 	doJSON(t, handler, http.MethodPost, "/internal/mediamtx/hook", map[string]string{
-		"event":  "stream-available",
-		"path":   "live/" + key,
+		"event": "stream-available",
+		"path":  "live/" + key,
 	}, authHeaders(testInternalSecret))
 
 	// Second publish attempt should be rejected
