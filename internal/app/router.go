@@ -16,6 +16,7 @@ import (
 	"github.com/igustavo11/livestreaming-clone/internal/db"
 	"github.com/igustavo11/livestreaming-clone/internal/email"
 	"github.com/igustavo11/livestreaming-clone/internal/ingest"
+	"github.com/igustavo11/livestreaming-clone/internal/metrics"
 	"github.com/igustavo11/livestreaming-clone/internal/public"
 	"github.com/igustavo11/livestreaming-clone/internal/storage"
 )
@@ -25,6 +26,7 @@ var playerHTML string
 
 func NewRouter(pool *pgxpool.Pool, queries *db.Queries, google auth.GoogleAuth, pendingSecret string, store storage.ObjectStorage, mailer email.Sender, publicBaseURL string, internalSecret string, mediamtxURL string, cookieSecure bool, r2PublicBaseURL ...string) http.Handler {
 	r := chi.NewRouter()
+	r.Use(metrics.Middleware)
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		status := map[string]string{"status": "ok"}
@@ -60,6 +62,17 @@ func NewRouter(pool *pgxpool.Pool, queries *db.Queries, google auth.GoogleAuth, 
 	r.Mount("/api/channels", publicHandler.Routes())
 
 	r.Get("/ws/chat/{username}", chatHandler.ServeWS)
+
+	r.Get("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		if cnt, err := queries.GetActiveStreamsCount(r.Context()); err == nil {
+			metrics.SetActiveStreams(int(cnt))
+		}
+		metrics.ResetViewers()
+		for ch, n := range chatHandler.Counts() {
+			metrics.SetViewers(ch, n)
+		}
+		metrics.Handler().ServeHTTP(w, r)
+	})
 
 	var cdnBase string
 	if len(r2PublicBaseURL) > 0 {

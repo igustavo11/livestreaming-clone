@@ -72,3 +72,6 @@ SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.is_l
 FROM channels c
 JOIN users u ON u.id = c.user_id
 WHERE u.username = $1;
+
+-- name: GetActiveStreamsCount :one
+SELECT COUNT(*) FROM channels WHERE is_live = true;

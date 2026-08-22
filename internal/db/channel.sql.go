@@ -11,6 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getActiveStreamsCount = `-- name: GetActiveStreamsCount :one
+SELECT COUNT(*) FROM channels WHERE is_live = true
+`
+
+func (q *Queries) GetActiveStreamsCount(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, getActiveStreamsCount)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getAllLiveChannels = `-- name: GetAllLiveChannels :many
 SELECT id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at
 FROM channels

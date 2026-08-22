@@ -38,6 +38,16 @@ func (h *Hub) Count(channel string) int {
 	return len(h.clients[channel])
 }
 
+func (h *Hub) Counts() map[string]int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	m := make(map[string]int, len(h.clients))
+	for ch, clients := range h.clients {
+		m[ch] = len(clients)
+	}
+	return m
+}
+
 func (h *Hub) startViewerCountBroadcaster() {
 	go func() {
 		interval := ViewerCountInterval

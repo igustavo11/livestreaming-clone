@@ -19,11 +19,28 @@ import (
 	"github.com/igustavo11/livestreaming-clone/internal/dbmigrate"
 	"github.com/igustavo11/livestreaming-clone/internal/email"
 	"github.com/igustavo11/livestreaming-clone/internal/ingest"
+	"github.com/igustavo11/livestreaming-clone/internal/redact"
 	"github.com/igustavo11/livestreaming-clone/internal/storage"
 )
 
+func newRedactingHandler(base slog.Handler, secrets []string) slog.Handler {
+	return redact.NewRedactingHandler(base, secrets)
+}
+
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	// Structured JSON logs with secret redaction
+	baseHandler := slog.NewJSONHandler(os.Stdout, nil)
+	var secrets []string
+	for _, k := range []string{"AUTH_SECRET", "INTERNAL_SECRET", "R2_SECRET_ACCESS_KEY", "RESEND_API_KEY"} {
+		if v := os.Getenv(k); v != "" {
+			secrets = append(secrets, v)
+		}
+	}
+	var handler slog.Handler = baseHandler
+	if len(secrets) > 0 {
+		handler = newRedactingHandler(baseHandler, secrets)
+	}
+	logger := slog.New(handler)
 	slog.SetDefault(logger)
 
 	cfg, err := config.Load()

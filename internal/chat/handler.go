@@ -48,6 +48,13 @@ func (h *Handler) Count(channel string) int {
 	return h.hub.Count(channel)
 }
 
+func (h *Handler) Counts() map[string]int {
+	if h == nil || h.hub == nil {
+		return nil
+	}
+	return h.hub.Counts()
+}
+
 func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
 	if !isValidUsername(username) {
