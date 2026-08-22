@@ -52,3 +52,23 @@ WHERE c.stream_key_hash = $1;
 SELECT id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at
 FROM channels
 WHERE is_live = true;
+
+-- name: ListLiveChannels :many
+SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.is_live, c.created_at
+FROM channels c
+JOIN users u ON u.id = c.user_id
+WHERE c.is_live = true
+ORDER BY c.created_at DESC;
+
+-- name: ListLiveChannelsByCategory :many
+SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.is_live, c.created_at
+FROM channels c
+JOIN users u ON u.id = c.user_id
+WHERE c.is_live = true AND c.category = $1
+ORDER BY c.created_at DESC;
+
+-- name: GetPublicChannelByUsername :one
+SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.is_live, c.created_at
+FROM channels c
+JOIN users u ON u.id = c.user_id
+WHERE u.username = $1;

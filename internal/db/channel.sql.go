@@ -156,6 +156,136 @@ func (q *Queries) GetChannelUsernameByStreamKeyHash(ctx context.Context, streamK
 	return username, err
 }
 
+const getPublicChannelByUsername = `-- name: GetPublicChannelByUsername :one
+SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.is_live, c.created_at
+FROM channels c
+JOIN users u ON u.id = c.user_id
+WHERE u.username = $1
+`
+
+type GetPublicChannelByUsernameRow struct {
+	ID           pgtype.UUID
+	UserID       pgtype.UUID
+	Username     string
+	Title        string
+	Category     string
+	ThumbnailUrl string
+	IsLive       bool
+	CreatedAt    pgtype.Timestamptz
+}
+
+func (q *Queries) GetPublicChannelByUsername(ctx context.Context, username string) (GetPublicChannelByUsernameRow, error) {
+	row := q.db.QueryRow(ctx, getPublicChannelByUsername, username)
+	var i GetPublicChannelByUsernameRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Username,
+		&i.Title,
+		&i.Category,
+		&i.ThumbnailUrl,
+		&i.IsLive,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const listLiveChannels = `-- name: ListLiveChannels :many
+SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.is_live, c.created_at
+FROM channels c
+JOIN users u ON u.id = c.user_id
+WHERE c.is_live = true
+ORDER BY c.created_at DESC
+`
+
+type ListLiveChannelsRow struct {
+	ID           pgtype.UUID
+	UserID       pgtype.UUID
+	Username     string
+	Title        string
+	Category     string
+	ThumbnailUrl string
+	IsLive       bool
+	CreatedAt    pgtype.Timestamptz
+}
+
+func (q *Queries) ListLiveChannels(ctx context.Context) ([]ListLiveChannelsRow, error) {
+	rows, err := q.db.Query(ctx, listLiveChannels)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLiveChannelsRow
+	for rows.Next() {
+		var i ListLiveChannelsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Username,
+			&i.Title,
+			&i.Category,
+			&i.ThumbnailUrl,
+			&i.IsLive,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLiveChannelsByCategory = `-- name: ListLiveChannelsByCategory :many
+SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.is_live, c.created_at
+FROM channels c
+JOIN users u ON u.id = c.user_id
+WHERE c.is_live = true AND c.category = $1
+ORDER BY c.created_at DESC
+`
+
+type ListLiveChannelsByCategoryRow struct {
+	ID           pgtype.UUID
+	UserID       pgtype.UUID
+	Username     string
+	Title        string
+	Category     string
+	ThumbnailUrl string
+	IsLive       bool
+	CreatedAt    pgtype.Timestamptz
+}
+
+func (q *Queries) ListLiveChannelsByCategory(ctx context.Context, category string) ([]ListLiveChannelsByCategoryRow, error) {
+	rows, err := q.db.Query(ctx, listLiveChannelsByCategory, category)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLiveChannelsByCategoryRow
+	for rows.Next() {
+		var i ListLiveChannelsByCategoryRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Username,
+			&i.Title,
+			&i.Category,
+			&i.ThumbnailUrl,
+			&i.IsLive,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setChannelLive = `-- name: SetChannelLive :exec
 UPDATE channels
 SET is_live = $2

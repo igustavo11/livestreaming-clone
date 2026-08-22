@@ -14,6 +14,7 @@ import (
 	"github.com/igustavo11/livestreaming-clone/internal/db"
 	"github.com/igustavo11/livestreaming-clone/internal/email"
 	"github.com/igustavo11/livestreaming-clone/internal/ingest"
+	"github.com/igustavo11/livestreaming-clone/internal/public"
 	"github.com/igustavo11/livestreaming-clone/internal/storage"
 )
 
@@ -51,6 +52,9 @@ func NewRouter(pool *pgxpool.Pool, queries *db.Queries, google auth.GoogleAuth, 
 		r.Post("/auth", ingestHandler.Auth)
 		r.Post("/hook", ingestHandler.Hook)
 	})
+
+	publicHandler := public.NewHandler(queries)
+	r.Mount("/api/channels", publicHandler.Routes())
 
 	var cdnBase string
 	if len(r2PublicBaseURL) > 0 {
