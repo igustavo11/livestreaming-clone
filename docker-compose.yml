@@ -74,6 +74,7 @@ services:
       RESEND_FROM: ${RESEND_FROM:-noreply@localhost}
       INTERNAL_SECRET: ${INTERNAL_SECRET:-dev-internal-secret}
       MEDIAMTX_URL: http://mediamtx:9997
+      REDIS_ADDR: redis:6379
     depends_on:
       postgres:
         condition: service_healthy

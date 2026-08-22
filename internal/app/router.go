@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/igustavo11/livestreaming-clone/internal/auth"
 	"github.com/igustavo11/livestreaming-clone/internal/channel"
+	"github.com/igustavo11/livestreaming-clone/internal/chat"
 	"github.com/igustavo11/livestreaming-clone/internal/db"
 	"github.com/igustavo11/livestreaming-clone/internal/email"
 	"github.com/igustavo11/livestreaming-clone/internal/ingest"
@@ -56,6 +58,9 @@ func NewRouter(pool *pgxpool.Pool, queries *db.Queries, google auth.GoogleAuth, 
 	publicHandler := public.NewHandler(queries)
 	r.Mount("/api/channels", publicHandler.Routes())
 
+	chatHandler := newChatHandler(queries)
+	r.Get("/ws/chat/{username}", chatHandler.ServeWS)
+
 	var cdnBase string
 	if len(r2PublicBaseURL) > 0 {
 		cdnBase = strings.TrimRight(r2PublicBaseURL[0], "/")
@@ -85,4 +90,20 @@ func isValidUsername(s string) bool {
 		}
 	}
 	return true
+}
+
+func newChatHandler(queries *db.Queries) *chat.Handler {
+	addr := os.Getenv("REDIS_ADDR")
+	if addr == "" {
+		addr = os.Getenv("REDIS_URL")
+	}
+	if addr != "" {
+		if strings.HasPrefix(addr, "redis://") {
+			addr = strings.TrimPrefix(addr, "redis://")
+		}
+		if ps, err := chat.NewRedisPubSub(addr); err == nil {
+			return chat.NewHandler(queries, ps)
+		}
+	}
+	return chat.NewHandler(queries, chat.NewMemoryPubSub())
 }
