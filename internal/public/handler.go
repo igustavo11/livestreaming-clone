@@ -13,12 +13,17 @@ import (
 	"github.com/igustavo11/livestreaming-clone/internal/httputil"
 )
 
-type Handler struct {
-	queries *db.Queries
+type ViewerCounter interface {
+	Count(channel string) int
 }
 
-func NewHandler(queries *db.Queries) *Handler {
-	return &Handler{queries: queries}
+type Handler struct {
+	queries *db.Queries
+	counter ViewerCounter
+}
+
+func NewHandler(queries *db.Queries, counter ViewerCounter) *Handler {
+	return &Handler{queries: queries, counter: counter}
 }
 
 func (h *Handler) Routes() chi.Router {
@@ -58,7 +63,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		}
 		channels = make([]channelJSON, 0, len(rows))
 		for _, row := range rows {
-			channels = append(channels, toJSON(row.ID, row.Username, row.Title, row.Category, row.ThumbnailUrl, row.IsLive))
+			channels = append(channels, h.toJSON(row.ID, row.Username, row.Title, row.Category, row.ThumbnailUrl, row.IsLive))
 		}
 	} else {
 		rows, err := h.queries.ListLiveChannels(r.Context())
@@ -68,7 +73,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		}
 		channels = make([]channelJSON, 0, len(rows))
 		for _, row := range rows {
-			channels = append(channels, toJSON(row.ID, row.Username, row.Title, row.Category, row.ThumbnailUrl, row.IsLive))
+			channels = append(channels, h.toJSON(row.ID, row.Username, row.Title, row.Category, row.ThumbnailUrl, row.IsLive))
 		}
 	}
 	if channels == nil {
@@ -92,10 +97,14 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, getResponse{Channel: toJSON(row.ID, row.Username, row.Title, row.Category, row.ThumbnailUrl, row.IsLive)})
+	httputil.WriteJSON(w, http.StatusOK, getResponse{Channel: h.toJSON(row.ID, row.Username, row.Title, row.Category, row.ThumbnailUrl, row.IsLive)})
 }
 
-func toJSON(id pgtype.UUID, username, title, category, thumbnailURL string, isLive bool) channelJSON {
+func (h *Handler) toJSON(id pgtype.UUID, username, title, category, thumbnailURL string, isLive bool) channelJSON {
+	count := 0
+	if h.counter != nil {
+		count = h.counter.Count(username)
+	}
 	return channelJSON{
 		ID:           httputil.UUIDString(id),
 		Username:     username,
@@ -103,7 +112,7 @@ func toJSON(id pgtype.UUID, username, title, category, thumbnailURL string, isLi
 		Category:     category,
 		ThumbnailURL: thumbnailURL,
 		IsLive:       isLive,
-		ViewerCount:  0,
+		ViewerCount:  count,
 	}
 }
 

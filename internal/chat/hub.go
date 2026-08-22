@@ -2,8 +2,12 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
+	"time"
 )
+
+var ViewerCountInterval = 15 * time.Second
 
 type Hub struct {
 	mu         sync.RWMutex
@@ -17,13 +21,50 @@ type Hub struct {
 
 func NewHub(pubsub PubSub) *Hub {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Hub{
+	h := &Hub{
 		clients:    make(map[string]map[*Client]struct{}),
 		pubsub:     pubsub,
 		subscribed: make(map[string]bool),
 		ctx:        ctx,
 		cancel:     cancel,
 	}
+	h.startViewerCountBroadcaster()
+	return h
+}
+
+func (h *Hub) Count(channel string) int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.clients[channel])
+}
+
+func (h *Hub) startViewerCountBroadcaster() {
+	go func() {
+		interval := ViewerCountInterval
+		if interval <= 0 {
+			interval = 15 * time.Second
+		}
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				h.mu.RLock()
+				channels := make([]string, 0, len(h.clients))
+				for ch := range h.clients {
+					channels = append(channels, ch)
+				}
+				h.mu.RUnlock()
+				for _, ch := range channels {
+					count := h.Count(ch)
+					msg, _ := json.Marshal(map[string]any{"type": "viewer_count", "viewer_count": count, "count": count})
+					h.Broadcast(ch, string(msg))
+				}
+			case <-h.ctx.Done():
+				return
+			}
+		}
+	}()
 }
 
 func (h *Hub) Add(channel string, c *Client) {

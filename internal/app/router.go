@@ -55,10 +55,10 @@ func NewRouter(pool *pgxpool.Pool, queries *db.Queries, google auth.GoogleAuth, 
 		r.Post("/hook", ingestHandler.Hook)
 	})
 
-	publicHandler := public.NewHandler(queries)
+	chatHandler := newChatHandler(queries)
+	publicHandler := public.NewHandler(queries, chatHandler)
 	r.Mount("/api/channels", publicHandler.Routes())
 
-	chatHandler := newChatHandler(queries)
 	r.Get("/ws/chat/{username}", chatHandler.ServeWS)
 
 	var cdnBase string

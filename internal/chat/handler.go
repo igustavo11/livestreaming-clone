@@ -41,6 +41,13 @@ func NewHandler(queries *db.Queries, pubsub PubSub) *Handler {
 	return &Handler{queries: queries, hub: NewHub(pubsub)}
 }
 
+func (h *Handler) Count(channel string) int {
+	if h == nil || h.hub == nil {
+		return 0
+	}
+	return h.hub.Count(channel)
+}
+
 func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
 	if !isValidUsername(username) {
