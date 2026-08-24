@@ -3,10 +3,12 @@ package app
 import (
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/igustavo11/livestreaming-clone/internal/auth"
@@ -22,6 +24,9 @@ import (
 
 //go:embed player.html
 var playerHTML string
+
+//go:embed offline.html
+var offlineHTML string
 
 // Deps gathers everything the router needs to wire the application.
 type Deps struct {
@@ -96,10 +101,22 @@ func NewRouter(d Deps) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		hlsURL := cdnBase + "/hls/" + username + "/index.m3u8"
-		html := strings.ReplaceAll(playerHTML, "__HLS_URL__", hlsURL)
+		ch, err := d.Queries.GetPublicChannelByUsername(r.Context(), username)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				http.NotFound(w, r)
+				return
+			}
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(html))
+		if !ch.IsLive {
+			_, _ = w.Write([]byte(strings.ReplaceAll(offlineHTML, "__USERNAME__", username)))
+			return
+		}
+		hlsURL := cdnBase + "/hls/" + username + "/index.m3u8"
+		_, _ = w.Write([]byte(strings.ReplaceAll(playerHTML, "__HLS_URL__", hlsURL)))
 	})
 
 	return r

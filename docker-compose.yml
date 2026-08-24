@@ -32,6 +32,11 @@ services:
       - hls_staging:/staging
     ports:
       - "1935:1935"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9997/v3/paths/list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   hlsupload:
     build:

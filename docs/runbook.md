@@ -51,7 +51,7 @@ curl http://localhost/metrics | head -20
 # livestreaming_active_streams, livestreaming_viewers, http_requests_total
 ```
 
-All services have healthchecks (`postgres`, `redis`, `mediamtx` via `curl`).
+`postgres`, `redis` and `mediamtx` (control API via `curl`) have healthchecks.
 
 ## Streamer flow
 
@@ -86,7 +86,7 @@ On `runOnAvailable`, MediaMTX calls `POST /internal/mediamtx/hook` with `{"event
 
 ```bash
 curl http://localhost/api/channels | jq
-# [{"username":"streamer","title":"","is_live":true,"viewer_count":0,...}]
+# {"channels":[{"username":"streamer","title":"","is_live":true,"viewer_count":0,...}]}
 curl "http://localhost/api/channels?category=gaming"
 ```
 
@@ -101,7 +101,9 @@ curl http://localhost/api/channels/streamer | jq
 # Player page (hls.js)
 open http://localhost/player/streamer
 # The HTML is rendered by the server at GET /player/{username} and contains
-# <video> with hls.js loading https://<R2_PUBLIC_BASE_URL>/hls/<username>/index.m3u8
+# <video> with hls.js loading https://<R2_PUBLIC_BASE_URL>/hls/<username>/index.m3u8.
+# Offline channels render an "offline" page instead of the player, and the
+# hlsupload sidecar purges the channel's HLS objects from R2 once the stream ends.
 ```
 
 The HLS path is `hls/<username>/index.m3u8` on R2, cached by Cloudflare. Segments are uploaded by the `hlsupload` sidecar from the shared `hls_staging` volume.
