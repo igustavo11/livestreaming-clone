@@ -239,23 +239,14 @@ func (h *Handler) RequireAuth(next http.Handler) http.Handler {
 			return
 		}
 
-		tokenHash := HashSessionToken(c.Value)
-		su, err := h.queries.GetSessionUser(r.Context(), tokenHash)
-		if err != nil || !su.ExpiresAt.Valid || !su.ExpiresAt.Time.After(time.Now()) {
-			// Clean up expired/invalid session
-			if err == nil {
-				_ = h.queries.DeleteSession(r.Context(), tokenHash)
-			}
+		su, err := ResolveSession(r.Context(), h.queries, c.Value)
+		if err != nil {
+			_ = h.queries.DeleteSession(r.Context(), HashSessionToken(c.Value))
 			httputil.WriteError(w, http.StatusUnauthorized, "authentication required")
 			return
 		}
 
-		ctx := ContextWithUser(r.Context(), &SessionUser{
-			ID:       httputil.UUIDString(su.ID),
-			Email:    su.Email,
-			Username: su.Username,
-		})
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next.ServeHTTP(w, r.WithContext(ContextWithUser(r.Context(), su)))
 	})
 }
 

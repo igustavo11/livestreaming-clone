@@ -15,7 +15,6 @@ import (
 
 	"github.com/igustavo11/livestreaming-clone/internal/auth"
 	"github.com/igustavo11/livestreaming-clone/internal/db"
-	"github.com/igustavo11/livestreaming-clone/internal/httputil"
 )
 
 const (
@@ -91,19 +90,7 @@ func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) resolveUser(ctx context.Context, token string) (*auth.SessionUser, error) {
-	hash := auth.HashSessionToken(token)
-	su, err := h.queries.GetSessionUser(ctx, hash)
-	if err != nil {
-		return nil, err
-	}
-	if !su.ExpiresAt.Valid || !su.ExpiresAt.Time.After(time.Now()) {
-		return nil, context.Canceled
-	}
-	return &auth.SessionUser{
-		ID:       httputil.UUIDString(su.ID),
-		Email:    su.Email,
-		Username: su.Username,
-	}, nil
+	return auth.ResolveSession(ctx, h.queries, token)
 }
 
 type Client struct {
