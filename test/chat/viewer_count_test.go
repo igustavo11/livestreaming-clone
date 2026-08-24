@@ -6,8 +6,35 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
+
 	"github.com/igustavo11/livestreaming-clone/internal/chat"
 )
+
+// readViewerCount waits until conn receives a viewer_count broadcast equal to
+// want. Viewer count is eventually consistent — a broadcast may reflect a
+// moment before all connections registered — so we keep reading instead of
+// asserting on the first broadcast.
+func readViewerCount(t *testing.T, conn *websocket.Conn, want int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for viewer_count=%d", want)
+		}
+		_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		var m map[string]any
+		if err := conn.ReadJSON(&m); err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		if m["type"] != "viewer_count" {
+			continue
+		}
+		if int(m["viewer_count"].(float64)) == want {
+			return
+		}
+	}
+}
 
 func TestViewerCountBroadcastAndPublicAPI(t *testing.T) {
 	orig := chat.ViewerCountInterval
@@ -24,39 +51,8 @@ func TestViewerCountBroadcastAndPublicAPI(t *testing.T) {
 	bob := dialWS(t, wsURL(srv, "alice"), bobCookie)
 	time.Sleep(100 * time.Millisecond)
 
-	// expect viewer_count broadcast to both (should be 2)
-	// anon should receive viewer_count
-	_ = anon.SetReadDeadline(time.Now().Add(2 * time.Second))
-	var m map[string]any
-	if err := anon.ReadJSON(&m); err != nil {
-		t.Fatalf("anon viewer count read: %v", err)
-	}
-	// may receive chat history or viewer_count; skip until viewer_count
-	for m["type"] != "viewer_count" {
-		_ = anon.SetReadDeadline(time.Now().Add(2 * time.Second))
-		if err := anon.ReadJSON(&m); err != nil {
-			t.Fatalf("anon read: %v", err)
-		}
-	}
-	if int(m["viewer_count"].(float64)) != 2 && int(m["count"].(float64)) != 2 {
-		t.Fatalf("viewer_count = %v, want 2", m["viewer_count"])
-	}
-
-	// bob should also receive
-	_ = bob.SetReadDeadline(time.Now().Add(2 * time.Second))
-	var m2 map[string]any
-	if err := bob.ReadJSON(&m2); err != nil {
-		t.Fatalf("bob viewer count: %v", err)
-	}
-	for m2["type"] != "viewer_count" {
-		_ = bob.SetReadDeadline(time.Now().Add(2 * time.Second))
-		if err := bob.ReadJSON(&m2); err != nil {
-			t.Fatalf("bob read: %v", err)
-		}
-	}
-	if int(m2["viewer_count"].(float64)) != 2 {
-		t.Fatalf("bob viewer_count = %v, want 2", m2["viewer_count"])
-	}
+	readViewerCount(t, anon, 2)
+	readViewerCount(t, bob, 2)
 
 	// public API should also expose count
 	rec := doJSON(t, handler, http.MethodGet, "/api/channels/alice", nil)
@@ -75,23 +71,9 @@ func TestViewerCountBroadcastAndPublicAPI(t *testing.T) {
 		t.Fatalf("public viewer_count = %d, want 2", resp.Channel.ViewerCount)
 	}
 
-	// disconnect one, count should decrement to 1 on next broadcast
+	// disconnect one, count should decrement to 1 on a later broadcast
 	_ = anon.Close()
-	time.Sleep(400 * time.Millisecond)
-	_ = bob.SetReadDeadline(time.Now().Add(2 * time.Second))
-	var m3 map[string]any
-	if err := bob.ReadJSON(&m3); err != nil {
-		t.Fatalf("bob after disconnect: %v", err)
-	}
-	for m3["type"] != "viewer_count" {
-		_ = bob.SetReadDeadline(time.Now().Add(2 * time.Second))
-		if err := bob.ReadJSON(&m3); err != nil {
-			t.Fatalf("bob read2: %v", err)
-		}
-	}
-	if int(m3["viewer_count"].(float64)) != 1 {
-		t.Fatalf("after disconnect viewer_count = %v, want 1", m3["viewer_count"])
-	}
+	readViewerCount(t, bob, 1)
 
 	_ = bob.Close()
 }
