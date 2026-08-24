@@ -254,6 +254,33 @@ func TestChatRateLimited(t *testing.T) {
 	}
 }
 
+func TestChatRateLimitPerUserAcrossConnections(t *testing.T) {
+	cleanTables(t)
+	srv, handler := newTestServer(t)
+	signup(t, handler, "alice@example.com", "alice")
+	bobCookie := signup(t, handler, "bob@example.com", "bob")
+	receiver := dialWS(t, wsURL(srv, "alice"), nil)
+	bob1 := dialWS(t, wsURL(srv, "alice"), bobCookie)
+	bob2 := dialWS(t, wsURL(srv, "alice"), bobCookie)
+	time.Sleep(100 * time.Millisecond)
+
+	sendChat(t, bob1, "from-conn-1")
+	m := readJSONWithTimeout(t, receiver, 2*time.Second)
+	if m["message"] != "from-conn-1" {
+		t.Fatalf("first message should go through, got %+v", m)
+	}
+
+	sendChat(t, bob2, "from-conn-2")
+	errMsg := readJSONWithTimeout(t, bob2, 2*time.Second)
+	if errMsg["type"] == "chat" {
+		errMsg = readJSONWithTimeout(t, bob2, 2*time.Second)
+	}
+	if errMsg["type"] != "error" {
+		t.Fatalf("second connection of same user should be rate limited, got %+v", errMsg)
+	}
+	expectNoMessage(t, receiver, 300*time.Millisecond)
+}
+
 func TestChatNotPersisted(t *testing.T) {
 	cleanTables(t)
 	srv, handler := newTestServer(t)
@@ -286,6 +313,8 @@ func TestChatReconnectResumes(t *testing.T) {
 	bob2 := dialWS(t, wsURL(srv, "alice"), bobCookie)
 	receiver := dialWS(t, wsURL(srv, "alice"), nil)
 	time.Sleep(100 * time.Millisecond)
+	// rate limit is per user, not per connection — wait the window out
+	time.Sleep(time.Second)
 	sendChat(t, bob2, "msg2")
 	m := readJSONWithTimeout(t, receiver, 2*time.Second)
 	if m["message"] != "msg2" {

@@ -29,15 +29,33 @@ var upgrader = websocket.Upgrader{
 }
 
 type Handler struct {
-	queries *db.Queries
-	hub     *Hub
+	queries  *db.Queries
+	hub      *Hub
+	mu       sync.Mutex
+	lastSend map[string]time.Time
 }
 
 func NewHandler(queries *db.Queries, pubsub PubSub) *Handler {
 	if pubsub == nil {
 		pubsub = NewMemoryPubSub()
 	}
-	return &Handler{queries: queries, hub: NewHub(pubsub)}
+	return &Handler{
+		queries:  queries,
+		hub:      NewHub(pubsub),
+		lastSend: make(map[string]time.Time),
+	}
+}
+
+// allowSend enforces the per-user chat rate limit: one message per second,
+// regardless of how many connections the user holds open.
+func (h *Handler) allowSend(username string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if last, ok := h.lastSend[username]; ok && time.Since(last) < rateLimit {
+		return false
+	}
+	h.lastSend[username] = time.Now()
+	return true
 }
 
 func (h *Handler) Count(channel string) int {
@@ -94,13 +112,11 @@ func (h *Handler) resolveUser(ctx context.Context, token string) (*auth.SessionU
 }
 
 type Client struct {
-	conn     *websocket.Conn
-	send     chan []byte
-	channel  string
-	user     *auth.SessionUser
-	hub      *Hub
-	mu       sync.Mutex
-	lastSend time.Time
+	conn    *websocket.Conn
+	send    chan []byte
+	channel string
+	user    *auth.SessionUser
+	hub     *Hub
 }
 
 func newClient(conn *websocket.Conn, channel string, user *auth.SessionUser, hub *Hub) *Client {
@@ -147,14 +163,10 @@ func (c *Client) readPump(h *Handler) {
 			_ = c.writeError("authentication required")
 			continue
 		}
-		c.mu.Lock()
-		if !c.lastSend.IsZero() && time.Since(c.lastSend) < rateLimit {
-			c.mu.Unlock()
+		if !h.allowSend(c.user.Username) {
 			_ = c.writeError("rate limited: 1 message per second")
 			continue
 		}
-		c.lastSend = time.Now()
-		c.mu.Unlock()
 
 		out, _ := json.Marshal(map[string]string{
 			"type":     "chat",

@@ -274,6 +274,8 @@ func TestMVP_ChatEndToEnd(t *testing.T) {
 	}
 	defer bobConn2.Close()
 	time.Sleep(100 * time.Millisecond)
+	// rate limit is per user, not per connection — wait the window out
+	time.Sleep(time.Second)
 	if err := bobConn2.WriteJSON(map[string]string{"message": "after reconnect"}); err != nil {
 		t.Fatalf("write2: %v", err)
 	}
