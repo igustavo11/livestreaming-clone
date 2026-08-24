@@ -90,6 +90,29 @@ func (r *R2) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
+func (r *R2) List(ctx context.Context, prefix string) ([]string, error) {
+	var keys []string
+	var token *string
+	for {
+		out, err := r.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+			Bucket:            aws.String(r.bucket),
+			Prefix:            aws.String(prefix),
+			ContinuationToken: token,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("r2 list: %w", err)
+		}
+		for _, o := range out.Contents {
+			keys = append(keys, aws.ToString(o.Key))
+		}
+		if out.IsTruncated == nil || !*out.IsTruncated {
+			break
+		}
+		token = out.NextContinuationToken
+	}
+	return keys, nil
+}
+
 // KeyFromURL extracts the object key from a public URL under PublicBaseURL.
 func KeyFromURL(publicBaseURL, publicURL string) string {
 	base := strings.TrimRight(publicBaseURL, "/") + "/"

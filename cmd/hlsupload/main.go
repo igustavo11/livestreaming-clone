@@ -79,18 +79,31 @@ func main() {
 	pollInterval := 500 * time.Millisecond
 	logger.Info("hlsupload starting", "staging", stagingDir, "interval", pollInterval)
 
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			logger.Info("hlsupload stopped")
 			return
-		case <-time.After(pollInterval):
+		case <-ticker.C:
 			if err := scanAndUpload(ctx, up, stagingDir); err != nil {
 				logger.Error("scan error", "error", err)
+			}
+			ended, err := up.CleanupStaleStreams(ctx, stagingDir, staleAfter)
+			if err != nil {
+				logger.Error("cleanup error", "error", err)
+			}
+			for _, key := range ended {
+				logger.Info("stream ended, HLS purged", "stream_key_prefix", streamkey.Preview(key))
 			}
 		}
 	}
 }
+
+// staleAfter is how long a playlist may go without an update before the
+// stream is considered ended. FFmpeg rewrites index.m3u8 every ~2s while live.
+const staleAfter = 30 * time.Second
 
 func scanAndUpload(ctx context.Context, up *hls.Uploader, stagingDir string) error {
 	return filepath.Walk(stagingDir, func(path string, info os.FileInfo, err error) error {

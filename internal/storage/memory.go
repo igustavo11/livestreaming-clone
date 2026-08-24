@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
+	"strings"
 	"sync"
 )
 
@@ -51,6 +53,20 @@ func (m *Memory) Delete(ctx context.Context, key string) error {
 	defer m.mu.Unlock()
 	delete(m.objects, key)
 	return nil
+}
+
+func (m *Memory) List(ctx context.Context, prefix string) ([]string, error) {
+	_ = ctx
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var keys []string
+	for k := range m.objects {
+		if strings.HasPrefix(k, prefix) {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	return keys, nil
 }
 
 // Get returns stored bytes for assertions in tests.
