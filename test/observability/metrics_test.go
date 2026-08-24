@@ -152,3 +152,27 @@ func TestMetricsEndpointExposesActiveStreamsAndViewers(t *testing.T) {
 		}
 	}
 }
+
+func TestMetricsPathLabelIsRoutePattern(t *testing.T) {
+	cleanTables(t)
+	handler := newRouter(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/channels/ghostuser", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status %d, want 404", w.Code)
+	}
+
+	rec := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	mw := httptest.NewRecorder()
+	handler.ServeHTTP(mw, rec)
+	body := mw.Body.String()
+
+	if !strings.Contains(body, `http_requests_total{method="GET",path="/api/channels/{username}",status="404"}`) {
+		t.Fatalf("expected bounded route-pattern label, got:\n%s", body)
+	}
+	if strings.Contains(body, `path="/api/channels/ghostuser"`) {
+		t.Fatal("raw URL path leaked into metric labels")
+	}
+}

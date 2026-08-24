@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -43,11 +44,21 @@ func Middleware(next http.Handler) http.Handler {
 		rw := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rw, r)
 		duration := time.Since(start).Seconds()
-		path := r.URL.Path
-		// normalize path for cardinality: keep as is for now
+		path := routePattern(r)
 		RequestsTotal.WithLabelValues(r.Method, path, strconv.Itoa(rw.status)).Inc()
 		RequestDuration.WithLabelValues(r.Method, path).Observe(duration)
 	})
+}
+
+// routePattern returns the matched route pattern (e.g. "/api/channels/{username}")
+// instead of the raw URL path, keeping label cardinality bounded.
+func routePattern(r *http.Request) string {
+	if rctx := chi.RouteContext(r.Context()); rctx != nil {
+		if p := rctx.RoutePattern(); p != "" {
+			return p
+		}
+	}
+	return "unmatched"
 }
 
 type statusRecorder struct {
