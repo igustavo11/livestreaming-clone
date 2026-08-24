@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/igustavo11/livestreaming-clone/internal/auth"
 	"github.com/igustavo11/livestreaming-clone/internal/db"
 	"github.com/igustavo11/livestreaming-clone/internal/httputil"
 )
@@ -84,7 +85,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
-	if !isValidUsername(username) {
+	if auth.ValidateUsername(username) != nil {
 		httputil.WriteError(w, http.StatusNotFound, "channel not found")
 		return
 	}
@@ -114,16 +115,4 @@ func (h *Handler) toJSON(id pgtype.UUID, username, title, category, thumbnailURL
 		IsLive:       isLive,
 		ViewerCount:  count,
 	}
-}
-
-func isValidUsername(s string) bool {
-	if len(s) < 3 || len(s) > 25 {
-		return false
-	}
-	for _, c := range s {
-		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') {
-			return false
-		}
-	}
-	return true
 }

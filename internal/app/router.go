@@ -92,7 +92,7 @@ func NewRouter(d Deps) http.Handler {
 	cdnBase := strings.TrimRight(d.R2PublicBaseURL, "/")
 	r.Get("/player/{username}", func(w http.ResponseWriter, r *http.Request) {
 		username := chi.URLParam(r, "username")
-		if !isValidUsername(username) {
+		if auth.ValidateUsername(username) != nil {
 			http.NotFound(w, r)
 			return
 		}
@@ -103,16 +103,4 @@ func NewRouter(d Deps) http.Handler {
 	})
 
 	return r
-}
-
-func isValidUsername(s string) bool {
-	if len(s) < 3 || len(s) > 25 {
-		return false
-	}
-	for _, c := range s {
-		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') {
-			return false
-		}
-	}
-	return true
 }

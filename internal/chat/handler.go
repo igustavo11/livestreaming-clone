@@ -57,7 +57,7 @@ func (h *Handler) Counts() map[string]int {
 
 func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
-	if !isValidUsername(username) {
+	if auth.ValidateUsername(username) != nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -208,16 +208,4 @@ func (c *Client) writeError(errMsg string) error {
 	default:
 	}
 	return nil
-}
-
-func isValidUsername(s string) bool {
-	if len(s) < 3 || len(s) > 25 {
-		return false
-	}
-	for _, c := range s {
-		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') {
-			return false
-		}
-	}
-	return true
 }
