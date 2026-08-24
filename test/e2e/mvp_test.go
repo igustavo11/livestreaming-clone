@@ -52,7 +52,14 @@ func newRouter(t *testing.T) http.Handler {
 	orig := chat.ViewerCountInterval
 	chat.ViewerCountInterval = 200 * time.Millisecond
 	t.Cleanup(func() { chat.ViewerCountInterval = orig })
-	return app.NewRouter(testPool, testQueries, nil, "test-pending-secret", storage.NewMemory("https://cdn.test"), nil, "http://localhost", "test-internal-secret", "", false)
+	return app.NewRouter(app.Deps{
+		Pool:           testPool,
+		Queries:        testQueries,
+		PendingSecret:  "test-pending-secret",
+		ObjectStore:    storage.NewMemory("https://cdn.test"),
+		PublicBaseURL:  "http://localhost",
+		InternalSecret: "test-internal-secret",
+	})
 }
 
 func doJSON(t *testing.T, h http.Handler, method, path string, body any, cookies ...*http.Cookie) *httptest.ResponseRecorder {

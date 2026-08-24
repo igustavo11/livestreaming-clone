@@ -50,7 +50,15 @@ func cleanTables(t *testing.T) {
 
 func newRouter() http.Handler {
 	store := storage.NewMemory("https://cdn.test")
-	return app.NewRouter(testPool, testQueries, nil, testPendingSecret, store, nil, "http://localhost", testInternalSecret, "http://mediamtx:9997", false)
+	return app.NewRouter(app.Deps{
+		Pool:           testPool,
+		Queries:        testQueries,
+		PendingSecret:  testPendingSecret,
+		ObjectStore:    store,
+		PublicBaseURL:  "http://localhost",
+		InternalSecret: testInternalSecret,
+		MediaMTXURL:    "http://mediamtx:9997",
+	})
 }
 
 func doJSON(t *testing.T, handler http.Handler, method, path string, body any, headers ...map[string]string) *httptest.ResponseRecorder {

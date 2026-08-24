@@ -11,7 +11,11 @@ import (
 )
 
 func newRouter() http.Handler {
-	return app.NewRouter(nil, nil, nil, "", storage.NewMemory(""), nil, "https://cdn.test", "", "", false, "https://cdn.test")
+	return app.NewRouter(app.Deps{
+		ObjectStore:     storage.NewMemory(""),
+		PublicBaseURL:   "https://cdn.test",
+		R2PublicBaseURL: "https://cdn.test",
+	})
 }
 
 func TestPlayerReturnsHTML(t *testing.T) {

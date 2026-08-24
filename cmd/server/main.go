@@ -14,6 +14,7 @@ import (
 
 	"github.com/igustavo11/livestreaming-clone/internal/app"
 	"github.com/igustavo11/livestreaming-clone/internal/auth"
+	"github.com/igustavo11/livestreaming-clone/internal/chat"
 	"github.com/igustavo11/livestreaming-clone/internal/config"
 	"github.com/igustavo11/livestreaming-clone/internal/db"
 	"github.com/igustavo11/livestreaming-clone/internal/dbmigrate"
@@ -107,9 +108,37 @@ func main() {
 		logger.Info("resend email disabled; forgot-password returns 503")
 	}
 
+	var chatPubSub chat.PubSub
+	if cfg.RedisAddr != "" {
+		ps, err := chat.NewRedisPubSub(cfg.RedisAddr)
+		if err != nil {
+			logger.Error("failed to connect chat redis", "addr", cfg.RedisAddr, "error", err)
+			os.Exit(1)
+		}
+		defer ps.Close()
+		chatPubSub = ps
+		logger.Info("chat pub/sub via redis", "addr", cfg.RedisAddr)
+	} else {
+		chatPubSub = chat.NewMemoryPubSub()
+		logger.Warn("REDIS_ADDR not set; chat uses in-memory pub/sub (single instance only)")
+	}
+
 	srv := &http.Server{
-		Addr:              ":" + cfg.Port,
-		Handler:           app.NewRouter(pool, db.New(pool), google, cfg.AuthSecret, objectStore, mailer, cfg.PublicBaseURL, cfg.InternalSecret, cfg.MediaMTXURL, cfg.CookieSecure, cfg.R2PublicBaseURL),
+		Addr: ":" + cfg.Port,
+		Handler: app.NewRouter(app.Deps{
+			Pool:            pool,
+			Queries:         db.New(pool),
+			Google:          google,
+			PendingSecret:   cfg.AuthSecret,
+			ObjectStore:     objectStore,
+			Mailer:          mailer,
+			PublicBaseURL:   cfg.PublicBaseURL,
+			InternalSecret:  cfg.InternalSecret,
+			MediaMTXURL:     cfg.MediaMTXURL,
+			CookieSecure:    cfg.CookieSecure,
+			R2PublicBaseURL: cfg.R2PublicBaseURL,
+			ChatPubSub:      chatPubSub,
+		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

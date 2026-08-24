@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 type Config struct {
@@ -22,6 +23,8 @@ type Config struct {
 	InternalSecret     string
 	MediaMTXURL        string
 	CookieSecure       bool
+	RedisAddr          string
+	StagingDir         string
 }
 
 func Load() (Config, error) {
@@ -42,6 +45,8 @@ func Load() (Config, error) {
 		InternalSecret:     os.Getenv("INTERNAL_SECRET"),
 		MediaMTXURL:        getEnv("MEDIAMTX_URL", ""),
 		CookieSecure:       getEnv("COOKIE_SECURE", "true") == "true",
+		RedisAddr:          redisAddr(),
+		StagingDir:         getEnv("STAGING_DIR", "/staging"),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -67,4 +72,12 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func redisAddr() string {
+	addr := os.Getenv("REDIS_ADDR")
+	if addr == "" {
+		addr = os.Getenv("REDIS_URL")
+	}
+	return strings.TrimPrefix(addr, "redis://")
 }

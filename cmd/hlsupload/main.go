@@ -68,16 +68,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	stagingDir := os.Getenv("STAGING_DIR")
-	if stagingDir == "" {
-		stagingDir = "/staging"
-	}
-
 	resolver := &dbResolver{queries: queries}
 	up := hls.NewUploader(objectStore, resolver)
 
 	pollInterval := 500 * time.Millisecond
-	logger.Info("hlsupload starting", "staging", stagingDir, "interval", pollInterval)
+	logger.Info("hlsupload starting", "staging", cfg.StagingDir, "interval", pollInterval)
 
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
@@ -87,10 +82,10 @@ func main() {
 			logger.Info("hlsupload stopped")
 			return
 		case <-ticker.C:
-			if err := scanAndUpload(ctx, up, stagingDir); err != nil {
+			if err := scanAndUpload(ctx, up, cfg.StagingDir); err != nil {
 				logger.Error("scan error", "error", err)
 			}
-			ended, err := up.CleanupStaleStreams(ctx, stagingDir, staleAfter)
+			ended, err := up.CleanupStaleStreams(ctx, cfg.StagingDir, staleAfter)
 			if err != nil {
 				logger.Error("cleanup error", "error", err)
 			}

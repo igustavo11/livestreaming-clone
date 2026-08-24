@@ -43,7 +43,13 @@ func cleanTables(t *testing.T) {
 }
 
 func newRouter() http.Handler {
-	return app.NewRouter(testPool, testQueries, nil, "test-pending-secret", storage.NewMemory("https://cdn.test"), nil, "http://localhost", "", "", false)
+	return app.NewRouter(app.Deps{
+		Pool:          testPool,
+		Queries:       testQueries,
+		PendingSecret: "test-pending-secret",
+		ObjectStore:   storage.NewMemory("https://cdn.test"),
+		PublicBaseURL: "http://localhost",
+	})
 }
 
 func doJSON(t *testing.T, handler http.Handler, method, path string, body any, cookies ...*http.Cookie) *httptest.ResponseRecorder {

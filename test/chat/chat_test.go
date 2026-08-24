@@ -48,7 +48,13 @@ func cleanTables(t *testing.T) {
 
 func newTestServer(t *testing.T) (*httptest.Server, http.Handler) {
 	t.Helper()
-	handler := app.NewRouter(testPool, testQueries, nil, "test-pending-secret", storage.NewMemory("https://cdn.test"), nil, "http://localhost", "", "", false)
+	handler := app.NewRouter(app.Deps{
+		Pool:          testPool,
+		Queries:       testQueries,
+		PendingSecret: "test-pending-secret",
+		ObjectStore:   storage.NewMemory("https://cdn.test"),
+		PublicBaseURL: "http://localhost",
+	})
 	srv := httptest.NewServer(handler)
 	t.Cleanup(func() { srv.Close() })
 	return srv, handler
