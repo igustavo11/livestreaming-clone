@@ -3,6 +3,7 @@ package ingest
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"net"
 	"net/http"
 	"strings"
 
@@ -37,6 +38,7 @@ func (h *Handler) Routes() chi.Router {
 type authRequest struct {
 	Action string `json:"action"`
 	Path   string `json:"path"`
+	IP     string `json:"ip"`
 }
 
 type hookRequest struct {
@@ -46,8 +48,11 @@ type hookRequest struct {
 
 // Auth handles MediaMTX blocking HTTP authentication.
 // Returns 200 if the stream key is valid and the channel is not already live.
+// MediaMTX authHTTPAddress does not support custom headers, so we also
+// accept requests from Docker-internal IPs (172.x, 192.168.x, 10.x).
 func (h *Handler) Auth(w http.ResponseWriter, r *http.Request) {
-	if !h.checkSecret(w, r) {
+	if !h.checkSecretNoWrite(r) && !isDockerInternal(r) {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
@@ -55,6 +60,12 @@ func (h *Handler) Auth(w http.ResponseWriter, r *http.Request) {
 	var req authRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Allow read action only from loopback (ffmpeg inside the container)
+	if req.Action == "read" && isLoopback(req.IP) {
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 
@@ -143,16 +154,25 @@ func (h *Handler) Hook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) checkSecret(w http.ResponseWriter, r *http.Request) bool {
-	secret := r.Header.Get("X-Internal-Secret")
-	if secret == "" || subtle.ConstantTimeCompare([]byte(secret), []byte(h.internalSecret)) != 1 {
+	if !h.checkSecretNoWrite(r) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return false
 	}
 	return true
 }
 
+func (h *Handler) checkSecretNoWrite(r *http.Request) bool {
+	secret := r.Header.Get("X-Internal-Secret")
+	return secret != "" && subtle.ConstantTimeCompare([]byte(secret), []byte(h.internalSecret)) == 1
+}
+
 func extractKeyFromPath(path string) string {
-	// Path format: "live/STREAMKEY"
+	// MediaMTX can expose the RTMP application and key as either
+	// "live/STREAMKEY" or the key itself when OBS uses the root URL.
+	if strings.HasPrefix(path, "live_") && !strings.Contains(path, "/") {
+		return path
+	}
+
 	parts := strings.SplitN(path, "/", 2)
 	if len(parts) != 2 || parts[0] != "live" {
 		return ""
@@ -164,4 +184,21 @@ func writeError(w http.ResponseWriter, code int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+func isLoopback(ip string) bool {
+	parsed := net.ParseIP(ip)
+	return parsed != nil && parsed.IsLoopback()
+}
+
+func isDockerInternal(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsPrivate() || ip.IsLoopback()
 }

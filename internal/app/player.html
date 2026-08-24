@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live Stream Player</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+</head>
+<body>
+<h2 id="channel"></h2>
+<video id="video" controls autoplay muted></video>
+<script>
+  var params = new URLSearchParams(window.location.search);
+  var channel = params.get('channel') || location.pathname.split('/').pop();
+  document.getElementById('channel').textContent = channel;
+  var video = document.getElementById('video');
+  var src = '__HLS_URL__';
+  if (Hls.isSupported()) {
+    var hls = new Hls({
+      liveSyncDurationCount: 1,
+      liveMaxLatencyDurationCount: 3,
+      maxLiveSyncPlaybackRate: 1.2,
+      liveBackBufferLength: 0
+    });
+    hls.loadSource(src);
+    hls.attachMedia(video);
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = src;
+  }
+</script>
+</body>
+</html>

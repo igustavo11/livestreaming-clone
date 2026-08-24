@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	testPendingSecret = "test-pending-secret"
+	testPendingSecret  = "test-pending-secret"
 	testInternalSecret = "test-internal-secret"
 )
 
@@ -50,7 +50,15 @@ func cleanTables(t *testing.T) {
 
 func newRouter() http.Handler {
 	store := storage.NewMemory("https://cdn.test")
-	return app.NewRouter(testPool, testQueries, nil, testPendingSecret, store, nil, "http://localhost", testInternalSecret, "http://mediamtx:9997", false)
+	return app.NewRouter(app.Deps{
+		Pool:           testPool,
+		Queries:        testQueries,
+		PendingSecret:  testPendingSecret,
+		ObjectStore:    store,
+		PublicBaseURL:  "http://localhost",
+		InternalSecret: testInternalSecret,
+		MediaMTXURL:    "http://mediamtx:9997",
+	})
 }
 
 func doJSON(t *testing.T, handler http.Handler, method, path string, body any, headers ...map[string]string) *httptest.ResponseRecorder {
@@ -162,6 +170,21 @@ func TestMediamtxAuthAcceptsValidKey(t *testing.T) {
 	}
 }
 
+func TestMediamtxAuthAcceptsRootRTMPPath(t *testing.T) {
+	cleanTables(t)
+	handler := newRouter()
+	cookie := signup(t, handler, "rootpath@example.com", "rootpath")
+	key := rotateKey(t, handler, cookie)
+
+	rec := doJSON(t, handler, http.MethodPost, "/internal/mediamtx/auth", map[string]string{
+		"action": "publish",
+		"path":   key,
+	}, authHeaders(testInternalSecret))
+	if rec.Code != http.StatusOK {
+		t.Errorf("root RTMP path: status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestMediamtxAuthRejectsAlreadyLive(t *testing.T) {
 	cleanTables(t)
 	handler := newRouter()
@@ -170,8 +193,8 @@ func TestMediamtxAuthRejectsAlreadyLive(t *testing.T) {
 
 	// Simulate stream going live via hook
 	doJSON(t, handler, http.MethodPost, "/internal/mediamtx/hook", map[string]string{
-		"event":  "stream-available",
-		"path":   "live/" + key,
+		"event": "stream-available",
+		"path":  "live/" + key,
 	}, authHeaders(testInternalSecret))
 
 	// Second publish attempt should be rejected
@@ -343,5 +366,22 @@ func TestReconcilerCorrectsLiveDrift(t *testing.T) {
 	_ = json.Unmarshal(get.Body.Bytes(), &resp)
 	if resp.Channel.IsLive {
 		t.Error("channel still live after stream-unavailable")
+	}
+}
+
+func TestMediamtxAuthAllowsLoopbackRead(t *testing.T) {
+	cleanTables(t)
+	handler := newRouter()
+	cookie := signup(t, handler, "read@example.com", "readuser")
+	key := rotateKey(t, handler, cookie)
+
+	// Read action from loopback IP should be allowed
+	rec := doJSON(t, handler, http.MethodPost, "/internal/mediamtx/auth", map[string]string{
+		"action": "read",
+		"path":   "live/" + key,
+		"ip":     "127.0.0.1",
+	}, authHeaders(testInternalSecret))
+	if rec.Code != http.StatusOK {
+		t.Errorf("loopback read: status = %d, want 200; body: %s", rec.Code, rec.Body.String())
 	}
 }

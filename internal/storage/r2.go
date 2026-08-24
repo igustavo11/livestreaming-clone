@@ -58,13 +58,21 @@ func NewR2(cfg R2Config) (*R2, error) {
 }
 
 func (r *R2) Put(ctx context.Context, key, contentType string, body io.Reader, size int64) (string, error) {
-	_, err := r.client.PutObject(ctx, &s3.PutObjectInput{
+	return r.PutCached(ctx, key, contentType, "", body, size)
+}
+
+func (r *R2) PutCached(ctx context.Context, key, contentType, cacheControl string, body io.Reader, size int64) (string, error) {
+	input := &s3.PutObjectInput{
 		Bucket:        aws.String(r.bucket),
 		Key:           aws.String(key),
 		Body:          body,
 		ContentType:   aws.String(contentType),
 		ContentLength: aws.Int64(size),
-	})
+	}
+	if cacheControl != "" {
+		input.CacheControl = aws.String(cacheControl)
+	}
+	_, err := r.client.PutObject(ctx, input)
 	if err != nil {
 		return "", fmt.Errorf("r2 put: %w", err)
 	}
@@ -80,6 +88,29 @@ func (r *R2) Delete(ctx context.Context, key string) error {
 		return fmt.Errorf("r2 delete: %w", err)
 	}
 	return nil
+}
+
+func (r *R2) List(ctx context.Context, prefix string) ([]string, error) {
+	var keys []string
+	var token *string
+	for {
+		out, err := r.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+			Bucket:            aws.String(r.bucket),
+			Prefix:            aws.String(prefix),
+			ContinuationToken: token,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("r2 list: %w", err)
+		}
+		for _, o := range out.Contents {
+			keys = append(keys, aws.ToString(o.Key))
+		}
+		if out.IsTruncated == nil || !*out.IsTruncated {
+			break
+		}
+		token = out.NextContinuationToken
+	}
+	return keys, nil
 }
 
 // KeyFromURL extracts the object key from a public URL under PublicBaseURL.

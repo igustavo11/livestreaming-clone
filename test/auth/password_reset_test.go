@@ -39,7 +39,13 @@ func (f *fakeMailer) count() int {
 }
 
 func newResetRouter(mailer email.Sender) http.Handler {
-	return app.NewRouter(testPool, testQueries, nil, testPendingSecret, nil, mailer, "http://localhost", "", "", false)
+	return app.NewRouter(app.Deps{
+		Pool:          testPool,
+		Queries:       testQueries,
+		PendingSecret: testPendingSecret,
+		Mailer:        mailer,
+		PublicBaseURL: "http://localhost",
+	})
 }
 
 func extractResetToken(body string) string {
