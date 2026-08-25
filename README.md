@@ -67,7 +67,7 @@ Chat and viewer count, over WebSocket (inside the monolith for now). Scales hori
 | CDN | Cloudflare |
 | Edge/TLS | Caddy |
 | Player | hls.js |
-| Front | React (Next.js, shadcn, TanStack Query) |
+| Front | React (Vite, shadcn, TanStack Query) |
 | Observability | `slog` structured JSON logs, Prometheus `/metrics` |
 | Initial infra | Docker Compose on a single VPS |
 
@@ -199,12 +199,12 @@ services:
   uploader     # watches the HLS staging volume → R2
   postgres
   redis        # chat pub/sub
-  caddy        # automatic TLS; /api and /ws → server; later / → web
+  caddy        # automatic TLS; /api and /ws → server; / → web
 volumes:
   hls          # shared: mediamtx (FFmpeg writes) ↔ uploader (reads/uploads)
 ```
 
-  FFmpeg runs inside the `mediamtx` container (it is launched by its hooks); MediaMTX itself never exposes HLS publicly — only RTMP. The Next.js frontend joins the compose as `web` when it lands.
+  FFmpeg runs inside the `mediamtx` container (it is launched by its hooks); MediaMTX itself never exposes HLS publicly — only RTMP. The Vite frontend joins the compose as `web`.
 - **Transition (phase 3)**: Postgres moves to a managed service (Cloud SQL/RDS) with a read replica.
 - **Scale (phase 4+)**: transcode workers scale via queue-based autoscaling, API/WS become independent services behind the LB (Cloud Run/ECS/k8s), R2 + Cloudflare already carry all viewer traffic from day one.
 
