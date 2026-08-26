@@ -13,11 +13,8 @@ vendor/
 go.work
 go.work.sum
 
-# Next.js (web/)
-web/.next/
-web/out/
-web/node_modules/
-web/.vercel
+# Vite (web/) — see web/.gitignore for the rest
+web/dist/
 
 # Dependencies
 node_modules/
@@ -57,3 +54,6 @@ node_modules/
 
 # Logs
 *.log
+
+# Playwright MCP test artifacts (screenshots, snapshots, console logs)
+.playwright-mcp/

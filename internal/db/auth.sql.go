@@ -14,7 +14,7 @@ import (
 const createChannelForUser = `-- name: CreateChannelForUser :one
 INSERT INTO channels (user_id)
 VALUES ($1)
-RETURNING id, user_id, title, category, thumbnail_url, is_live, created_at
+RETURNING id, user_id, title, category, thumbnail_url, avatar_url, is_live, created_at
 `
 
 type CreateChannelForUserRow struct {
@@ -23,6 +23,7 @@ type CreateChannelForUserRow struct {
 	Title        string
 	Category     string
 	ThumbnailUrl string
+	AvatarUrl    string
 	IsLive       bool
 	CreatedAt    pgtype.Timestamptz
 }
@@ -36,6 +37,7 @@ func (q *Queries) CreateChannelForUser(ctx context.Context, userID pgtype.UUID) 
 		&i.Title,
 		&i.Category,
 		&i.ThumbnailUrl,
+		&i.AvatarUrl,
 		&i.IsLive,
 		&i.CreatedAt,
 	)
@@ -99,7 +101,7 @@ func (q *Queries) DeleteSession(ctx context.Context, tokenHash string) error {
 }
 
 const getChannelByUserID = `-- name: GetChannelByUserID :one
-SELECT id, user_id, title, category, thumbnail_url, stream_key_hash, is_live, created_at, stream_key_preview FROM channels WHERE user_id = $1
+SELECT id, user_id, title, category, thumbnail_url, stream_key_hash, is_live, created_at, stream_key_preview, avatar_url FROM channels WHERE user_id = $1
 `
 
 func (q *Queries) GetChannelByUserID(ctx context.Context, userID pgtype.UUID) (Channel, error) {
@@ -115,6 +117,7 @@ func (q *Queries) GetChannelByUserID(ctx context.Context, userID pgtype.UUID) (C
 		&i.IsLive,
 		&i.CreatedAt,
 		&i.StreamKeyPreview,
+		&i.AvatarUrl,
 	)
 	return i, err
 }

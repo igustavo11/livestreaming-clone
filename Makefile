@@ -1,4 +1,4 @@
-.PHONY: up down build sqlc run test vet
+.PHONY: up down build sqlc run test vet web-dev web-test
 
 up:
 	docker compose up --build -d
@@ -23,3 +23,9 @@ vet:
 
 build-hlsupload:
 	CGO_ENABLED=0 go build -o bin/hlsupload ./cmd/hlsupload
+
+web-dev:
+	cd web && npm run dev
+
+web-test:
+	cd web && npm test

@@ -18,6 +18,13 @@ type Channel struct {
 	IsLive           bool
 	CreatedAt        pgtype.Timestamptz
 	StreamKeyPreview string
+	AvatarUrl        string
+}
+
+type Follow struct {
+	FollowerUserID pgtype.UUID
+	ChannelID      pgtype.UUID
+	CreatedAt      pgtype.Timestamptz
 }
 
 type Identity struct {

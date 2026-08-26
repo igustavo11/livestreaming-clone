@@ -64,11 +64,12 @@ type userJSON struct {
 }
 
 type channelJSON struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
-	Title    string `json:"title"`
-	Category string `json:"category"`
-	IsLive   bool   `json:"is_live"`
+	ID        string `json:"id"`
+	Username  string `json:"username"`
+	Title     string `json:"title"`
+	Category  string `json:"category"`
+	AvatarURL string `json:"avatar_url"`
+	IsLive    bool   `json:"is_live"`
 }
 
 type authResponse struct {
@@ -152,7 +153,7 @@ func (h *Handler) signup(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, cookie)
 
-	httputil.WriteJSON(w, http.StatusCreated, buildAuthResponse(httputil.UUIDString(user.ID), user.Email, user.Username, channel.ID, channel.Title, channel.Category, channel.IsLive))
+	httputil.WriteJSON(w, http.StatusCreated, buildAuthResponse(httputil.UUIDString(user.ID), user.Email, user.Username, channel.ID, channel.Title, channel.Category, channel.AvatarUrl, channel.IsLive))
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
@@ -193,7 +194,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, cookie)
 
-	httputil.WriteJSON(w, http.StatusOK, buildAuthResponse(httputil.UUIDString(user.ID), user.Email, user.Username, channel.ID, channel.Title, channel.Category, channel.IsLive))
+	httputil.WriteJSON(w, http.StatusOK, buildAuthResponse(httputil.UUIDString(user.ID), user.Email, user.Username, channel.ID, channel.Title, channel.Category, channel.AvatarUrl, channel.IsLive))
 }
 
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
@@ -227,7 +228,7 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, buildAuthResponse(sessionUser.ID, sessionUser.Email, sessionUser.Username, channel.ID, channel.Title, channel.Category, channel.IsLive))
+	httputil.WriteJSON(w, http.StatusOK, buildAuthResponse(sessionUser.ID, sessionUser.Email, sessionUser.Username, channel.ID, channel.Title, channel.Category, channel.AvatarUrl, channel.IsLive))
 }
 
 // RequireAuth is middleware that loads the session user into the request context.
@@ -278,7 +279,7 @@ func (h *Handler) createSession(ctx context.Context, userID pgtype.UUID) (*http.
 	}, nil
 }
 
-func buildAuthResponse(userID, email, username string, chID pgtype.UUID, title, category string, isLive bool) authResponse {
+func buildAuthResponse(userID, email, username string, chID pgtype.UUID, title, category, avatarURL string, isLive bool) authResponse {
 	return authResponse{
 		User: userJSON{
 			ID:       userID,
@@ -286,11 +287,12 @@ func buildAuthResponse(userID, email, username string, chID pgtype.UUID, title, 
 			Username: username,
 		},
 		Channel: channelJSON{
-			ID:       httputil.UUIDString(chID),
-			Username: username,
-			Title:    title,
-			Category: category,
-			IsLive:   isLive,
+			ID:        httputil.UUIDString(chID),
+			Username:  username,
+			Title:     title,
+			Category:  category,
+			AvatarURL: avatarURL,
+			IsLive:    isLive,
 		},
 	}
 }

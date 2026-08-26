@@ -6,7 +6,7 @@ RETURNING id, email, username, created_at;
 -- name: CreateChannelForUser :one
 INSERT INTO channels (user_id)
 VALUES ($1)
-RETURNING id, user_id, title, category, thumbnail_url, is_live, created_at;
+RETURNING id, user_id, title, category, thumbnail_url, avatar_url, is_live, created_at;
 
 -- name: GetUserByEmail :one
 SELECT * FROM users WHERE email = $1;

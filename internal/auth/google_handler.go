@@ -203,7 +203,7 @@ func (h *Handler) googleOnboarding(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, cookie)
 
-	httputil.WriteJSON(w, http.StatusCreated, buildAuthResponse(httputil.UUIDString(user.ID), user.Email, user.Username, channel.ID, channel.Title, channel.Category, channel.IsLive))
+	httputil.WriteJSON(w, http.StatusCreated, buildAuthResponse(httputil.UUIDString(user.ID), user.Email, user.Username, channel.ID, channel.Title, channel.Category, channel.AvatarUrl, channel.IsLive))
 }
 
 func (h *Handler) finishLogin(w http.ResponseWriter, r *http.Request, userID pgtype.UUID) {

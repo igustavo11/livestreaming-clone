@@ -112,6 +112,7 @@ SELECT
     c.title,
     c.category,
     c.thumbnail_url,
+    c.avatar_url,
     c.stream_key_hash,
     c.stream_key_preview,
     c.is_live,
@@ -128,6 +129,7 @@ type GetChannelDashboardByUserIDRow struct {
 	Title            string
 	Category         string
 	ThumbnailUrl     string
+	AvatarUrl        string
 	StreamKeyHash    pgtype.Text
 	StreamKeyPreview string
 	IsLive           bool
@@ -144,6 +146,7 @@ func (q *Queries) GetChannelDashboardByUserID(ctx context.Context, userID pgtype
 		&i.Title,
 		&i.Category,
 		&i.ThumbnailUrl,
+		&i.AvatarUrl,
 		&i.StreamKeyHash,
 		&i.StreamKeyPreview,
 		&i.IsLive,
@@ -168,21 +171,24 @@ func (q *Queries) GetChannelUsernameByStreamKeyHash(ctx context.Context, streamK
 }
 
 const getPublicChannelByUsername = `-- name: GetPublicChannelByUsername :one
-SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.is_live, c.created_at
+SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.avatar_url, c.is_live, c.created_at,
+    (SELECT COUNT(*) FROM follows f WHERE f.channel_id = c.id) AS follower_count
 FROM channels c
 JOIN users u ON u.id = c.user_id
 WHERE u.username = $1
 `
 
 type GetPublicChannelByUsernameRow struct {
-	ID           pgtype.UUID
-	UserID       pgtype.UUID
-	Username     string
-	Title        string
-	Category     string
-	ThumbnailUrl string
-	IsLive       bool
-	CreatedAt    pgtype.Timestamptz
+	ID            pgtype.UUID
+	UserID        pgtype.UUID
+	Username      string
+	Title         string
+	Category      string
+	ThumbnailUrl  string
+	AvatarUrl     string
+	IsLive        bool
+	CreatedAt     pgtype.Timestamptz
+	FollowerCount int64
 }
 
 func (q *Queries) GetPublicChannelByUsername(ctx context.Context, username string) (GetPublicChannelByUsernameRow, error) {
@@ -195,40 +201,67 @@ func (q *Queries) GetPublicChannelByUsername(ctx context.Context, username strin
 		&i.Title,
 		&i.Category,
 		&i.ThumbnailUrl,
+		&i.AvatarUrl,
 		&i.IsLive,
 		&i.CreatedAt,
+		&i.FollowerCount,
 	)
 	return i, err
 }
 
-const listLiveChannels = `-- name: ListLiveChannels :many
-SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.is_live, c.created_at
+const listLiveChannelsFiltered = `-- name: ListLiveChannelsFiltered :many
+SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.avatar_url, c.is_live, c.created_at,
+    (SELECT COUNT(*) FROM follows f WHERE f.channel_id = c.id) AS follower_count
 FROM channels c
 JOIN users u ON u.id = c.user_id
 WHERE c.is_live = true
+  AND ($3::text IS NULL OR c.category = $3)
+  AND (
+    $4::text IS NULL
+    OR u.username ILIKE '%' || $4 || '%'
+    OR c.title ILIKE '%' || $4 || '%'
+  )
 ORDER BY c.created_at DESC
+LIMIT $1 OFFSET $2
 `
 
-type ListLiveChannelsRow struct {
-	ID           pgtype.UUID
-	UserID       pgtype.UUID
-	Username     string
-	Title        string
-	Category     string
-	ThumbnailUrl string
-	IsLive       bool
-	CreatedAt    pgtype.Timestamptz
+type ListLiveChannelsFilteredParams struct {
+	Limit    int32
+	Offset   int32
+	Category pgtype.Text
+	Search   pgtype.Text
 }
 
-func (q *Queries) ListLiveChannels(ctx context.Context) ([]ListLiveChannelsRow, error) {
-	rows, err := q.db.Query(ctx, listLiveChannels)
+type ListLiveChannelsFilteredRow struct {
+	ID            pgtype.UUID
+	UserID        pgtype.UUID
+	Username      string
+	Title         string
+	Category      string
+	ThumbnailUrl  string
+	AvatarUrl     string
+	IsLive        bool
+	CreatedAt     pgtype.Timestamptz
+	FollowerCount int64
+}
+
+// category and search are optional (pass NULL to skip). search matches
+// username or title, case-insensitively. Callers fetch limit+1 rows to
+// cheaply derive "has more" without a separate COUNT query.
+func (q *Queries) ListLiveChannelsFiltered(ctx context.Context, arg ListLiveChannelsFilteredParams) ([]ListLiveChannelsFilteredRow, error) {
+	rows, err := q.db.Query(ctx, listLiveChannelsFiltered,
+		arg.Limit,
+		arg.Offset,
+		arg.Category,
+		arg.Search,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListLiveChannelsRow
+	var items []ListLiveChannelsFilteredRow
 	for rows.Next() {
-		var i ListLiveChannelsRow
+		var i ListLiveChannelsFilteredRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
@@ -236,56 +269,10 @@ func (q *Queries) ListLiveChannels(ctx context.Context) ([]ListLiveChannelsRow, 
 			&i.Title,
 			&i.Category,
 			&i.ThumbnailUrl,
+			&i.AvatarUrl,
 			&i.IsLive,
 			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listLiveChannelsByCategory = `-- name: ListLiveChannelsByCategory :many
-SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.is_live, c.created_at
-FROM channels c
-JOIN users u ON u.id = c.user_id
-WHERE c.is_live = true AND c.category = $1
-ORDER BY c.created_at DESC
-`
-
-type ListLiveChannelsByCategoryRow struct {
-	ID           pgtype.UUID
-	UserID       pgtype.UUID
-	Username     string
-	Title        string
-	Category     string
-	ThumbnailUrl string
-	IsLive       bool
-	CreatedAt    pgtype.Timestamptz
-}
-
-func (q *Queries) ListLiveChannelsByCategory(ctx context.Context, category string) ([]ListLiveChannelsByCategoryRow, error) {
-	rows, err := q.db.Query(ctx, listLiveChannelsByCategory, category)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListLiveChannelsByCategoryRow
-	for rows.Next() {
-		var i ListLiveChannelsByCategoryRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.Username,
-			&i.Title,
-			&i.Category,
-			&i.ThumbnailUrl,
-			&i.IsLive,
-			&i.CreatedAt,
+			&i.FollowerCount,
 		); err != nil {
 			return nil, err
 		}
@@ -313,11 +300,54 @@ func (q *Queries) SetChannelLive(ctx context.Context, arg SetChannelLiveParams) 
 	return err
 }
 
+const updateChannelAvatar = `-- name: UpdateChannelAvatar :one
+UPDATE channels
+SET avatar_url = $2
+WHERE user_id = $1
+RETURNING id, user_id, title, category, thumbnail_url, avatar_url, stream_key_hash, stream_key_preview, is_live, created_at
+`
+
+type UpdateChannelAvatarParams struct {
+	UserID    pgtype.UUID
+	AvatarUrl string
+}
+
+type UpdateChannelAvatarRow struct {
+	ID               pgtype.UUID
+	UserID           pgtype.UUID
+	Title            string
+	Category         string
+	ThumbnailUrl     string
+	AvatarUrl        string
+	StreamKeyHash    pgtype.Text
+	StreamKeyPreview string
+	IsLive           bool
+	CreatedAt        pgtype.Timestamptz
+}
+
+func (q *Queries) UpdateChannelAvatar(ctx context.Context, arg UpdateChannelAvatarParams) (UpdateChannelAvatarRow, error) {
+	row := q.db.QueryRow(ctx, updateChannelAvatar, arg.UserID, arg.AvatarUrl)
+	var i UpdateChannelAvatarRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Title,
+		&i.Category,
+		&i.ThumbnailUrl,
+		&i.AvatarUrl,
+		&i.StreamKeyHash,
+		&i.StreamKeyPreview,
+		&i.IsLive,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const updateChannelMetadata = `-- name: UpdateChannelMetadata :one
 UPDATE channels
 SET title = $2, category = $3
 WHERE user_id = $1
-RETURNING id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at
+RETURNING id, user_id, title, category, thumbnail_url, avatar_url, stream_key_hash, stream_key_preview, is_live, created_at
 `
 
 type UpdateChannelMetadataParams struct {
@@ -332,6 +362,7 @@ type UpdateChannelMetadataRow struct {
 	Title            string
 	Category         string
 	ThumbnailUrl     string
+	AvatarUrl        string
 	StreamKeyHash    pgtype.Text
 	StreamKeyPreview string
 	IsLive           bool
@@ -347,6 +378,7 @@ func (q *Queries) UpdateChannelMetadata(ctx context.Context, arg UpdateChannelMe
 		&i.Title,
 		&i.Category,
 		&i.ThumbnailUrl,
+		&i.AvatarUrl,
 		&i.StreamKeyHash,
 		&i.StreamKeyPreview,
 		&i.IsLive,
@@ -359,7 +391,7 @@ const updateChannelStreamKey = `-- name: UpdateChannelStreamKey :one
 UPDATE channels
 SET stream_key_hash = $2, stream_key_preview = $3
 WHERE user_id = $1
-RETURNING id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at
+RETURNING id, user_id, title, category, thumbnail_url, avatar_url, stream_key_hash, stream_key_preview, is_live, created_at
 `
 
 type UpdateChannelStreamKeyParams struct {
@@ -374,6 +406,7 @@ type UpdateChannelStreamKeyRow struct {
 	Title            string
 	Category         string
 	ThumbnailUrl     string
+	AvatarUrl        string
 	StreamKeyHash    pgtype.Text
 	StreamKeyPreview string
 	IsLive           bool
@@ -389,6 +422,7 @@ func (q *Queries) UpdateChannelStreamKey(ctx context.Context, arg UpdateChannelS
 		&i.Title,
 		&i.Category,
 		&i.ThumbnailUrl,
+		&i.AvatarUrl,
 		&i.StreamKeyHash,
 		&i.StreamKeyPreview,
 		&i.IsLive,
@@ -401,7 +435,7 @@ const updateChannelThumbnail = `-- name: UpdateChannelThumbnail :one
 UPDATE channels
 SET thumbnail_url = $2
 WHERE user_id = $1
-RETURNING id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at
+RETURNING id, user_id, title, category, thumbnail_url, avatar_url, stream_key_hash, stream_key_preview, is_live, created_at
 `
 
 type UpdateChannelThumbnailParams struct {
@@ -415,6 +449,7 @@ type UpdateChannelThumbnailRow struct {
 	Title            string
 	Category         string
 	ThumbnailUrl     string
+	AvatarUrl        string
 	StreamKeyHash    pgtype.Text
 	StreamKeyPreview string
 	IsLive           bool
@@ -430,6 +465,7 @@ func (q *Queries) UpdateChannelThumbnail(ctx context.Context, arg UpdateChannelT
 		&i.Title,
 		&i.Category,
 		&i.ThumbnailUrl,
+		&i.AvatarUrl,
 		&i.StreamKeyHash,
 		&i.StreamKeyPreview,
 		&i.IsLive,
