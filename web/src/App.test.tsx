@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import App from "./App";
 
 describe("App", () => {
-	it("renders without crashing", () => {
+	it("renders the home page by default", async () => {
 		render(<App />);
-		expect(screen.getByText("guguinha web")).toBeInTheDocument();
+		expect((await screen.findAllByText("Ao Vivo")).length).toBeGreaterThan(0);
 	});
 });

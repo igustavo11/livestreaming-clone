@@ -1,8 +1,11 @@
+import { AppProviders } from "@/app/providers";
+import { AppRouter } from "@/app/router";
+
 function App() {
 	return (
-		<div className="flex min-h-svh items-center justify-center">
-			<h1 className="text-2xl font-medium">guguinha web</h1>
-		</div>
+		<AppProviders>
+			<AppRouter />
+		</AppProviders>
 	);
 }
 
