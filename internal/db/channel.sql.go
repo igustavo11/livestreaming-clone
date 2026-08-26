@@ -112,6 +112,7 @@ SELECT
     c.title,
     c.category,
     c.thumbnail_url,
+    c.avatar_url,
     c.stream_key_hash,
     c.stream_key_preview,
     c.is_live,
@@ -128,6 +129,7 @@ type GetChannelDashboardByUserIDRow struct {
 	Title            string
 	Category         string
 	ThumbnailUrl     string
+	AvatarUrl        string
 	StreamKeyHash    pgtype.Text
 	StreamKeyPreview string
 	IsLive           bool
@@ -144,6 +146,7 @@ func (q *Queries) GetChannelDashboardByUserID(ctx context.Context, userID pgtype
 		&i.Title,
 		&i.Category,
 		&i.ThumbnailUrl,
+		&i.AvatarUrl,
 		&i.StreamKeyHash,
 		&i.StreamKeyPreview,
 		&i.IsLive,
@@ -313,11 +316,54 @@ func (q *Queries) SetChannelLive(ctx context.Context, arg SetChannelLiveParams) 
 	return err
 }
 
+const updateChannelAvatar = `-- name: UpdateChannelAvatar :one
+UPDATE channels
+SET avatar_url = $2
+WHERE user_id = $1
+RETURNING id, user_id, title, category, thumbnail_url, avatar_url, stream_key_hash, stream_key_preview, is_live, created_at
+`
+
+type UpdateChannelAvatarParams struct {
+	UserID    pgtype.UUID
+	AvatarUrl string
+}
+
+type UpdateChannelAvatarRow struct {
+	ID               pgtype.UUID
+	UserID           pgtype.UUID
+	Title            string
+	Category         string
+	ThumbnailUrl     string
+	AvatarUrl        string
+	StreamKeyHash    pgtype.Text
+	StreamKeyPreview string
+	IsLive           bool
+	CreatedAt        pgtype.Timestamptz
+}
+
+func (q *Queries) UpdateChannelAvatar(ctx context.Context, arg UpdateChannelAvatarParams) (UpdateChannelAvatarRow, error) {
+	row := q.db.QueryRow(ctx, updateChannelAvatar, arg.UserID, arg.AvatarUrl)
+	var i UpdateChannelAvatarRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Title,
+		&i.Category,
+		&i.ThumbnailUrl,
+		&i.AvatarUrl,
+		&i.StreamKeyHash,
+		&i.StreamKeyPreview,
+		&i.IsLive,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const updateChannelMetadata = `-- name: UpdateChannelMetadata :one
 UPDATE channels
 SET title = $2, category = $3
 WHERE user_id = $1
-RETURNING id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at
+RETURNING id, user_id, title, category, thumbnail_url, avatar_url, stream_key_hash, stream_key_preview, is_live, created_at
 `
 
 type UpdateChannelMetadataParams struct {
@@ -332,6 +378,7 @@ type UpdateChannelMetadataRow struct {
 	Title            string
 	Category         string
 	ThumbnailUrl     string
+	AvatarUrl        string
 	StreamKeyHash    pgtype.Text
 	StreamKeyPreview string
 	IsLive           bool
@@ -347,6 +394,7 @@ func (q *Queries) UpdateChannelMetadata(ctx context.Context, arg UpdateChannelMe
 		&i.Title,
 		&i.Category,
 		&i.ThumbnailUrl,
+		&i.AvatarUrl,
 		&i.StreamKeyHash,
 		&i.StreamKeyPreview,
 		&i.IsLive,
@@ -359,7 +407,7 @@ const updateChannelStreamKey = `-- name: UpdateChannelStreamKey :one
 UPDATE channels
 SET stream_key_hash = $2, stream_key_preview = $3
 WHERE user_id = $1
-RETURNING id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at
+RETURNING id, user_id, title, category, thumbnail_url, avatar_url, stream_key_hash, stream_key_preview, is_live, created_at
 `
 
 type UpdateChannelStreamKeyParams struct {
@@ -374,6 +422,7 @@ type UpdateChannelStreamKeyRow struct {
 	Title            string
 	Category         string
 	ThumbnailUrl     string
+	AvatarUrl        string
 	StreamKeyHash    pgtype.Text
 	StreamKeyPreview string
 	IsLive           bool
@@ -389,6 +438,7 @@ func (q *Queries) UpdateChannelStreamKey(ctx context.Context, arg UpdateChannelS
 		&i.Title,
 		&i.Category,
 		&i.ThumbnailUrl,
+		&i.AvatarUrl,
 		&i.StreamKeyHash,
 		&i.StreamKeyPreview,
 		&i.IsLive,
@@ -401,7 +451,7 @@ const updateChannelThumbnail = `-- name: UpdateChannelThumbnail :one
 UPDATE channels
 SET thumbnail_url = $2
 WHERE user_id = $1
-RETURNING id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_preview, is_live, created_at
+RETURNING id, user_id, title, category, thumbnail_url, avatar_url, stream_key_hash, stream_key_preview, is_live, created_at
 `
 
 type UpdateChannelThumbnailParams struct {
@@ -415,6 +465,7 @@ type UpdateChannelThumbnailRow struct {
 	Title            string
 	Category         string
 	ThumbnailUrl     string
+	AvatarUrl        string
 	StreamKeyHash    pgtype.Text
 	StreamKeyPreview string
 	IsLive           bool
@@ -430,6 +481,7 @@ func (q *Queries) UpdateChannelThumbnail(ctx context.Context, arg UpdateChannelT
 		&i.Title,
 		&i.Category,
 		&i.ThumbnailUrl,
+		&i.AvatarUrl,
 		&i.StreamKeyHash,
 		&i.StreamKeyPreview,
 		&i.IsLive,

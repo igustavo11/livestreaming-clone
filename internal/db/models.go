@@ -18,6 +18,7 @@ type Channel struct {
 	IsLive           bool
 	CreatedAt        pgtype.Timestamptz
 	StreamKeyPreview string
+	AvatarUrl        string
 }
 
 type Identity struct {

@@ -121,6 +121,7 @@ type channelResp struct {
 		Title            string `json:"title"`
 		Category         string `json:"category"`
 		ThumbnailURL     string `json:"thumbnail_url"`
+		AvatarURL        string `json:"avatar_url"`
 		IsLive           bool   `json:"is_live"`
 		StreamKeyPreview string `json:"stream_key_preview"`
 	} `json:"channel"`
@@ -333,13 +334,110 @@ func TestThumbnailReturns503WhenStorageUnavailable(t *testing.T) {
 	}
 }
 
+func TestAvatarUploadStoresAndPersistsURL(t *testing.T) {
+	cleanTables(t)
+	mem := storage.NewMemory("https://cdn.test")
+	handler := newRouter(mem)
+	cookie := signup(t, handler, "streamer@example.com", "streamer")
+
+	rec := uploadAvatar(t, handler, cookie, "avatar.png", "image/png", tinyPNG(t))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp channelResp
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !strings.HasPrefix(resp.Channel.AvatarURL, "https://cdn.test/avatars/") {
+		t.Errorf("avatar_url = %q, want avatars/ cdn prefix", resp.Channel.AvatarURL)
+	}
+	if mem.Len() != 1 {
+		t.Errorf("stored objects = %d, want 1", mem.Len())
+	}
+
+	get := doJSON(t, handler, http.MethodGet, "/api/me/channel", nil, cookie)
+	if err := json.Unmarshal(get.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal get: %v", err)
+	}
+	if !strings.HasPrefix(resp.Channel.AvatarURL, "https://cdn.test/avatars/") {
+		t.Errorf("persisted avatar_url = %q", resp.Channel.AvatarURL)
+	}
+}
+
+func TestAvatarReuploadReplacesPrevious(t *testing.T) {
+	cleanTables(t)
+	mem := storage.NewMemory("https://cdn.test")
+	handler := newRouter(mem)
+	cookie := signup(t, handler, "streamer@example.com", "streamer")
+
+	first := uploadAvatar(t, handler, cookie, "a.png", "image/png", tinyPNG(t))
+	var firstResp channelResp
+	_ = json.Unmarshal(first.Body.Bytes(), &firstResp)
+
+	second := uploadAvatar(t, handler, cookie, "b.png", "image/png", tinyPNG(t))
+	var secondResp channelResp
+	_ = json.Unmarshal(second.Body.Bytes(), &secondResp)
+	if secondResp.Channel.AvatarURL == firstResp.Channel.AvatarURL {
+		t.Error("expected new avatar URL after re-upload")
+	}
+	if mem.Len() != 1 {
+		t.Errorf("after replace, objects = %d, want 1 (old deleted)", mem.Len())
+	}
+}
+
+func TestAvatarUploadDoesNotClobberThumbnail(t *testing.T) {
+	cleanTables(t)
+	mem := storage.NewMemory("https://cdn.test")
+	handler := newRouter(mem)
+	cookie := signup(t, handler, "streamer@example.com", "streamer")
+
+	uploadThumbnail(t, handler, cookie, "thumb.png", "image/png", tinyPNG(t))
+	rec := uploadAvatar(t, handler, cookie, "avatar.png", "image/png", tinyPNG(t))
+
+	var resp channelResp
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Channel.ThumbnailURL == "" {
+		t.Error("expected thumbnail_url to survive an avatar upload")
+	}
+	if resp.Channel.AvatarURL == "" {
+		t.Error("expected avatar_url to be set")
+	}
+	if mem.Len() != 2 {
+		t.Errorf("stored objects = %d, want 2 (thumbnail + avatar)", mem.Len())
+	}
+}
+
+func TestAvatarRejectsInvalidContentType(t *testing.T) {
+	cleanTables(t)
+	handler := newRouter(nil)
+	cookie := signup(t, handler, "streamer@example.com", "streamer")
+
+	rec := uploadAvatar(t, handler, cookie, "x.gif", "image/gif", []byte("GIF89a"))
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnprocessableEntity, rec.Body.String())
+	}
+}
+
 func uploadThumbnail(t *testing.T, handler http.Handler, cookie *http.Cookie, filename, contentType string, data []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	return uploadImage(t, handler, cookie, "/api/me/channel/thumbnail", "thumbnail", filename, contentType, data)
+}
+
+func uploadAvatar(t *testing.T, handler http.Handler, cookie *http.Cookie, filename, contentType string, data []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	return uploadImage(t, handler, cookie, "/api/me/channel/avatar", "avatar", filename, contentType, data)
+}
+
+func uploadImage(t *testing.T, handler http.Handler, cookie *http.Cookie, path, fieldName, filename, contentType string, data []byte) *httptest.ResponseRecorder {
 	t.Helper()
 
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
 	part, err := w.CreatePart(map[string][]string{
-		"Content-Disposition": {`form-data; name="thumbnail"; filename="` + filename + `"`},
+		"Content-Disposition": {`form-data; name="` + fieldName + `"; filename="` + filename + `"`},
 		"Content-Type":        {contentType},
 	})
 	if err != nil {
@@ -352,7 +450,7 @@ func uploadThumbnail(t *testing.T, handler http.Handler, cookie *http.Cookie, fi
 		t.Fatalf("close multipart: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/me/channel/thumbnail", &buf)
+	req := httptest.NewRequest(http.MethodPost, path, &buf)
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	req.AddCookie(cookie)
 
