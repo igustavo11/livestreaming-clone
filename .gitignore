@@ -54,3 +54,6 @@ node_modules/
 
 # Logs
 *.log
+
+# Playwright MCP test artifacts (screenshots, snapshots, console logs)
+.playwright-mcp/
