@@ -21,6 +21,12 @@ type Channel struct {
 	AvatarUrl        string
 }
 
+type Follow struct {
+	FollowerUserID pgtype.UUID
+	ChannelID      pgtype.UUID
+	CreatedAt      pgtype.Timestamptz
+}
+
 type Identity struct {
 	Provider  string
 	Subject   string

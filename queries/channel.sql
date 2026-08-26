@@ -60,22 +60,27 @@ SELECT id, user_id, title, category, thumbnail_url, stream_key_hash, stream_key_
 FROM channels
 WHERE is_live = true;
 
--- name: ListLiveChannels :many
-SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.is_live, c.created_at
+-- name: ListLiveChannelsFiltered :many
+-- category and search are optional (pass NULL to skip). search matches
+-- username or title, case-insensitively. Callers fetch limit+1 rows to
+-- cheaply derive "has more" without a separate COUNT query.
+SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.avatar_url, c.is_live, c.created_at,
+    (SELECT COUNT(*) FROM follows f WHERE f.channel_id = c.id) AS follower_count
 FROM channels c
 JOIN users u ON u.id = c.user_id
 WHERE c.is_live = true
-ORDER BY c.created_at DESC;
-
--- name: ListLiveChannelsByCategory :many
-SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.is_live, c.created_at
-FROM channels c
-JOIN users u ON u.id = c.user_id
-WHERE c.is_live = true AND c.category = $1
-ORDER BY c.created_at DESC;
+  AND (sqlc.narg('category')::text IS NULL OR c.category = sqlc.narg('category'))
+  AND (
+    sqlc.narg('search')::text IS NULL
+    OR u.username ILIKE '%' || sqlc.narg('search') || '%'
+    OR c.title ILIKE '%' || sqlc.narg('search') || '%'
+  )
+ORDER BY c.created_at DESC
+LIMIT $1 OFFSET $2;
 
 -- name: GetPublicChannelByUsername :one
-SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.is_live, c.created_at
+SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.avatar_url, c.is_live, c.created_at,
+    (SELECT COUNT(*) FROM follows f WHERE f.channel_id = c.id) AS follower_count
 FROM channels c
 JOIN users u ON u.id = c.user_id
 WHERE u.username = $1;

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -115,17 +116,26 @@ func setChannelMeta(t *testing.T, username, title, category string) {
 }
 
 type publicChannel struct {
-	ID           string `json:"id"`
-	Username     string `json:"username"`
-	Title        string `json:"title"`
-	Category     string `json:"category"`
-	ThumbnailURL string `json:"thumbnail_url"`
-	IsLive       bool   `json:"is_live"`
-	ViewerCount  int    `json:"viewer_count"`
+	ID            string `json:"id"`
+	Username      string `json:"username"`
+	Title         string `json:"title"`
+	Category      string `json:"category"`
+	ThumbnailURL  string `json:"thumbnail_url"`
+	AvatarURL     string `json:"avatar_url"`
+	IsLive        bool   `json:"is_live"`
+	ViewerCount   int    `json:"viewer_count"`
+	FollowerCount int64  `json:"follower_count"`
+	IsFollowing   bool   `json:"is_following"`
 }
 
 type listResp struct {
 	Channels []publicChannel `json:"channels"`
+	HasMore  bool            `json:"has_more"`
+}
+
+type followResp struct {
+	FollowerCount int64 `json:"follower_count"`
+	IsFollowing   bool  `json:"is_following"`
 }
 
 type getResp struct {
@@ -303,6 +313,183 @@ func TestLiveListOrderingNewestFirst(t *testing.T) {
 	// carol was created last, should be first if ordered by created_at DESC
 	if resp.Channels[0].Username != "carol" {
 		t.Errorf("first = %q, want carol (newest first)", resp.Channels[0].Username)
+	}
+}
+
+func TestSearchMatchesUsernameOrTitle(t *testing.T) {
+	cleanTables(t)
+	h := newRouter()
+	signup(t, h, "a@example.com", "speedrunner")
+	signup(t, h, "b@example.com", "bob")
+	setChannelMeta(t, "bob", "Chill music night", "music")
+	setLive(t, "speedrunner", true)
+	setLive(t, "bob", true)
+
+	// matches by username substring
+	rec := doJSON(t, h, http.MethodGet, "/api/channels?search=speed", nil)
+	var resp listResp
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if len(resp.Channels) != 1 || resp.Channels[0].Username != "speedrunner" {
+		t.Fatalf("search=speed got %+v", resp.Channels)
+	}
+
+	// matches by title substring, case-insensitive
+	rec2 := doJSON(t, h, http.MethodGet, "/api/channels?search=CHILL", nil)
+	var resp2 listResp
+	_ = json.Unmarshal(rec2.Body.Bytes(), &resp2)
+	if len(resp2.Channels) != 1 || resp2.Channels[0].Username != "bob" {
+		t.Fatalf("search=CHILL got %+v", resp2.Channels)
+	}
+
+	// no match
+	rec3 := doJSON(t, h, http.MethodGet, "/api/channels?search=nonexistentterm", nil)
+	var resp3 listResp
+	_ = json.Unmarshal(rec3.Body.Bytes(), &resp3)
+	if len(resp3.Channels) != 0 {
+		t.Errorf("expected no matches, got %+v", resp3.Channels)
+	}
+
+	// search combines with category
+	rec4 := doJSON(t, h, http.MethodGet, "/api/channels?search=bob&category=gaming", nil)
+	var resp4 listResp
+	_ = json.Unmarshal(rec4.Body.Bytes(), &resp4)
+	if len(resp4.Channels) != 0 {
+		t.Errorf("search+wrong category should be empty, got %+v", resp4.Channels)
+	}
+}
+
+func TestPaginationLimitAndHasMore(t *testing.T) {
+	cleanTables(t)
+	h := newRouter()
+	for i := 0; i < 5; i++ {
+		username := fmt.Sprintf("streamer%d", i)
+		signup(t, h, username+"@example.com", username)
+		setLive(t, username, true)
+	}
+
+	rec := doJSON(t, h, http.MethodGet, "/api/channels?limit=2", nil)
+	var resp listResp
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Channels) != 2 {
+		t.Fatalf("len = %d, want 2", len(resp.Channels))
+	}
+	if !resp.HasMore {
+		t.Error("expected has_more true with 5 channels and limit 2")
+	}
+
+	rec2 := doJSON(t, h, http.MethodGet, "/api/channels?limit=2&offset=4", nil)
+	var resp2 listResp
+	_ = json.Unmarshal(rec2.Body.Bytes(), &resp2)
+	if len(resp2.Channels) != 1 {
+		t.Fatalf("len at offset 4 = %d, want 1", len(resp2.Channels))
+	}
+	if resp2.HasMore {
+		t.Error("expected has_more false on the last page")
+	}
+
+	// an oversized limit is capped, not rejected
+	rec3 := doJSON(t, h, http.MethodGet, "/api/channels?limit=9999", nil)
+	var resp3 listResp
+	_ = json.Unmarshal(rec3.Body.Bytes(), &resp3)
+	if len(resp3.Channels) != 5 {
+		t.Fatalf("capped limit len = %d, want 5", len(resp3.Channels))
+	}
+}
+
+func TestFollowRequiresAuthentication(t *testing.T) {
+	cleanTables(t)
+	h := newRouter()
+	signup(t, h, "a@example.com", "alice")
+
+	rec := doJSON(t, h, http.MethodPost, "/api/channels/alice/follow", nil)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestFollowUnknownChannelNotFound(t *testing.T) {
+	cleanTables(t)
+	h := newRouter()
+	cookie := signup(t, h, "a@example.com", "alice")
+
+	rec := doJSON(t, h, http.MethodPost, "/api/channels/nonexistent/follow", nil, cookie)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCannotFollowOwnChannel(t *testing.T) {
+	cleanTables(t)
+	h := newRouter()
+	cookie := signup(t, h, "a@example.com", "alice")
+
+	rec := doJSON(t, h, http.MethodPost, "/api/channels/alice/follow", nil, cookie)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestFollowUnfollowRoundTripUpdatesCountAndFlag(t *testing.T) {
+	cleanTables(t)
+	h := newRouter()
+	signup(t, h, "a@example.com", "alice")
+	bobCookie := signup(t, h, "b@example.com", "bob")
+
+	rec := doJSON(t, h, http.MethodPost, "/api/channels/alice/follow", nil, bobCookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("follow status = %d; body: %s", rec.Code, rec.Body.String())
+	}
+	var fr followResp
+	if err := json.Unmarshal(rec.Body.Bytes(), &fr); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if fr.FollowerCount != 1 || !fr.IsFollowing {
+		t.Fatalf("after follow: %+v, want count=1 following=true", fr)
+	}
+
+	// following again is idempotent
+	rec2 := doJSON(t, h, http.MethodPost, "/api/channels/alice/follow", nil, bobCookie)
+	var fr2 followResp
+	_ = json.Unmarshal(rec2.Body.Bytes(), &fr2)
+	if fr2.FollowerCount != 1 {
+		t.Errorf("double-follow count = %d, want 1 (idempotent)", fr2.FollowerCount)
+	}
+
+	// bob sees is_following true and the count on alice's public page
+	get := doJSON(t, h, http.MethodGet, "/api/channels/alice", nil, bobCookie)
+	var gr getResp
+	_ = json.Unmarshal(get.Body.Bytes(), &gr)
+	if !gr.Channel.IsFollowing || gr.Channel.FollowerCount != 1 {
+		t.Errorf("alice page as bob = %+v, want following=true count=1", gr.Channel)
+	}
+
+	// an anonymous viewer sees the count but never is_following=true
+	anonGet := doJSON(t, h, http.MethodGet, "/api/channels/alice", nil)
+	var anonResp getResp
+	_ = json.Unmarshal(anonGet.Body.Bytes(), &anonResp)
+	if anonResp.Channel.IsFollowing {
+		t.Error("anonymous viewer should never see is_following=true")
+	}
+	if anonResp.Channel.FollowerCount != 1 {
+		t.Errorf("anon follower_count = %d, want 1", anonResp.Channel.FollowerCount)
+	}
+
+	unfollow := doJSON(t, h, http.MethodDelete, "/api/channels/alice/follow", nil, bobCookie)
+	if unfollow.Code != http.StatusOK {
+		t.Fatalf("unfollow status = %d; body: %s", unfollow.Code, unfollow.Body.String())
+	}
+	var ur followResp
+	_ = json.Unmarshal(unfollow.Body.Bytes(), &ur)
+	if ur.FollowerCount != 0 || ur.IsFollowing {
+		t.Fatalf("after unfollow: %+v, want count=0 following=false", ur)
+	}
+
+	// unfollowing again (already unfollowed) is idempotent, not an error
+	unfollow2 := doJSON(t, h, http.MethodDelete, "/api/channels/alice/follow", nil, bobCookie)
+	if unfollow2.Code != http.StatusOK {
+		t.Fatalf("second unfollow status = %d; body: %s", unfollow2.Code, unfollow2.Body.String())
 	}
 }
 

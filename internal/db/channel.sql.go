@@ -171,21 +171,24 @@ func (q *Queries) GetChannelUsernameByStreamKeyHash(ctx context.Context, streamK
 }
 
 const getPublicChannelByUsername = `-- name: GetPublicChannelByUsername :one
-SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.is_live, c.created_at
+SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.avatar_url, c.is_live, c.created_at,
+    (SELECT COUNT(*) FROM follows f WHERE f.channel_id = c.id) AS follower_count
 FROM channels c
 JOIN users u ON u.id = c.user_id
 WHERE u.username = $1
 `
 
 type GetPublicChannelByUsernameRow struct {
-	ID           pgtype.UUID
-	UserID       pgtype.UUID
-	Username     string
-	Title        string
-	Category     string
-	ThumbnailUrl string
-	IsLive       bool
-	CreatedAt    pgtype.Timestamptz
+	ID            pgtype.UUID
+	UserID        pgtype.UUID
+	Username      string
+	Title         string
+	Category      string
+	ThumbnailUrl  string
+	AvatarUrl     string
+	IsLive        bool
+	CreatedAt     pgtype.Timestamptz
+	FollowerCount int64
 }
 
 func (q *Queries) GetPublicChannelByUsername(ctx context.Context, username string) (GetPublicChannelByUsernameRow, error) {
@@ -198,40 +201,67 @@ func (q *Queries) GetPublicChannelByUsername(ctx context.Context, username strin
 		&i.Title,
 		&i.Category,
 		&i.ThumbnailUrl,
+		&i.AvatarUrl,
 		&i.IsLive,
 		&i.CreatedAt,
+		&i.FollowerCount,
 	)
 	return i, err
 }
 
-const listLiveChannels = `-- name: ListLiveChannels :many
-SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.is_live, c.created_at
+const listLiveChannelsFiltered = `-- name: ListLiveChannelsFiltered :many
+SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.avatar_url, c.is_live, c.created_at,
+    (SELECT COUNT(*) FROM follows f WHERE f.channel_id = c.id) AS follower_count
 FROM channels c
 JOIN users u ON u.id = c.user_id
 WHERE c.is_live = true
+  AND ($3::text IS NULL OR c.category = $3)
+  AND (
+    $4::text IS NULL
+    OR u.username ILIKE '%' || $4 || '%'
+    OR c.title ILIKE '%' || $4 || '%'
+  )
 ORDER BY c.created_at DESC
+LIMIT $1 OFFSET $2
 `
 
-type ListLiveChannelsRow struct {
-	ID           pgtype.UUID
-	UserID       pgtype.UUID
-	Username     string
-	Title        string
-	Category     string
-	ThumbnailUrl string
-	IsLive       bool
-	CreatedAt    pgtype.Timestamptz
+type ListLiveChannelsFilteredParams struct {
+	Limit    int32
+	Offset   int32
+	Category pgtype.Text
+	Search   pgtype.Text
 }
 
-func (q *Queries) ListLiveChannels(ctx context.Context) ([]ListLiveChannelsRow, error) {
-	rows, err := q.db.Query(ctx, listLiveChannels)
+type ListLiveChannelsFilteredRow struct {
+	ID            pgtype.UUID
+	UserID        pgtype.UUID
+	Username      string
+	Title         string
+	Category      string
+	ThumbnailUrl  string
+	AvatarUrl     string
+	IsLive        bool
+	CreatedAt     pgtype.Timestamptz
+	FollowerCount int64
+}
+
+// category and search are optional (pass NULL to skip). search matches
+// username or title, case-insensitively. Callers fetch limit+1 rows to
+// cheaply derive "has more" without a separate COUNT query.
+func (q *Queries) ListLiveChannelsFiltered(ctx context.Context, arg ListLiveChannelsFilteredParams) ([]ListLiveChannelsFilteredRow, error) {
+	rows, err := q.db.Query(ctx, listLiveChannelsFiltered,
+		arg.Limit,
+		arg.Offset,
+		arg.Category,
+		arg.Search,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListLiveChannelsRow
+	var items []ListLiveChannelsFilteredRow
 	for rows.Next() {
-		var i ListLiveChannelsRow
+		var i ListLiveChannelsFilteredRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
@@ -239,56 +269,10 @@ func (q *Queries) ListLiveChannels(ctx context.Context) ([]ListLiveChannelsRow, 
 			&i.Title,
 			&i.Category,
 			&i.ThumbnailUrl,
+			&i.AvatarUrl,
 			&i.IsLive,
 			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listLiveChannelsByCategory = `-- name: ListLiveChannelsByCategory :many
-SELECT c.id, c.user_id, u.username, c.title, c.category, c.thumbnail_url, c.is_live, c.created_at
-FROM channels c
-JOIN users u ON u.id = c.user_id
-WHERE c.is_live = true AND c.category = $1
-ORDER BY c.created_at DESC
-`
-
-type ListLiveChannelsByCategoryRow struct {
-	ID           pgtype.UUID
-	UserID       pgtype.UUID
-	Username     string
-	Title        string
-	Category     string
-	ThumbnailUrl string
-	IsLive       bool
-	CreatedAt    pgtype.Timestamptz
-}
-
-func (q *Queries) ListLiveChannelsByCategory(ctx context.Context, category string) ([]ListLiveChannelsByCategoryRow, error) {
-	rows, err := q.db.Query(ctx, listLiveChannelsByCategory, category)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListLiveChannelsByCategoryRow
-	for rows.Next() {
-		var i ListLiveChannelsByCategoryRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.Username,
-			&i.Title,
-			&i.Category,
-			&i.ThumbnailUrl,
-			&i.IsLive,
-			&i.CreatedAt,
+			&i.FollowerCount,
 		); err != nil {
 			return nil, err
 		}
