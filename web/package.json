@@ -9,6 +9,7 @@
 		"lint": "biome lint .",
 		"format": "biome format --write .",
 		"check": "biome check --write .",
+		"ci": "biome ci .",
 		"preview": "vite preview",
 		"test": "vitest run"
 	},
